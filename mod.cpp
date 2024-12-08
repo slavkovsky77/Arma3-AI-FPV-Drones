@@ -1,0 +1,12 @@
+name = "AI Killer Drones";
+picture = "logo.paa";  // Optional
+actionName = "GitHub";
+action = "https://github.com/yourusername/ai_killer_drones";  // Optional
+description = "AI-controlled kamikaze drones that target vehicles";
+logo = "logo.paa";  // Optional
+logoOver = "logo.paa";  // Optional
+tooltip = "AI Killer Drones";
+tooltipOwned = "AI Killer Drones Owned";
+overview = "This mod adds AI-controlled kamikaze drones that automatically target and attack enemy vehicles.";
+author = "Your Name";
+version = "1.0.0"; 
