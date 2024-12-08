@@ -101,6 +101,12 @@ class CfgVehicles {
                 typeName = "NUMBER";
                 defaultValue = "200";
             };
+            class Debug: Checkbox {
+                property = "AI_Killer_Drones_Debug";
+                displayName = "Enable Debug";
+                tooltip = "Show debug messages in system chat";
+                defaultValue = "false";
+            };
         };
 
         class ModuleDescription: ModuleDescription {

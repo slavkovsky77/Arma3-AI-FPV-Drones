@@ -66,6 +66,23 @@ is_dead = {
 };
 
 
+isExternallyControlled = {
+    params ["_unit"];
+    
+    // Check UAV Terminal connection
+    private _isUAVConnected = isUAVConnected _unit;
+    if (_isUAVConnected) then {
+        true
+    } else {
+        // Check if unit is being directly controlled by Zeus
+        private _zeusController = _unit getVariable ["bis_fnc_moduleRemoteControl_owner", objNull];
+        if (!isNull _zeusController) then {
+            true
+        } else {
+            false
+        };
+    };
+};
 
 private _initialized = _uavInstance getVariable ["initialized", false];
 private _maxFlyHeight = 30;
@@ -86,7 +103,6 @@ systemChat format ["Initialized drone: %1", _uavInstance];
 private _nearestEnemy = objNull;
 while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 	if ([_uavInstance] call is_dead) then {
-		_uavCanHitTarget = false;
 		break;
 	};
 	_nearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _minTargetDistance] call findNearestEnemyOfType;
@@ -110,7 +126,7 @@ private _initialDistance2d = _currentDistance2d;
 
 private _lastSetHeight = _maxFlyHeight;
 private _lastSetHeightTime = diag_tickTime;
-private _uavCanHitTarget = true;
+private _uavCanHitTarget = false;
 private _predictedDistance = _currentDistance;
 
 private _lastMoveTime = diag_tickTime;
@@ -121,26 +137,23 @@ private _ascendTimeout = 10;
 //while {(_currentDistance2d > _cutDistance) && (_currentDistance2d > 2) && (_currentDistance > 2)} do {
 while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance2d)} do {
 	sleep _sleepInterval;
+	_uavCanHitTarget = false;
+
+	if ([_uavInstance] call isExternallyControlled) then {
+        break;
+    };
 
 	// is_dead(_uavInstance)
 	if ([_uavInstance] call is_dead) then {
 		systemChat format ["Drone is dead!"];
-		_uavCanHitTarget = false;
+
 		break;
 	};
 
 	if ([_target] call is_dead || (_currentDistance > 200)) then {
 		systemChat format ["Drone %1 lost the target!", _uavInstance];
-		_uavCanHitTarget = false;
-		break;
+=		break;
 	};
-
-	private _isConnected = isUAVConnected _uavInstance;
-	if (_isConnected) then {
-		systemChat format ["Drone %1 is connected to UAV", _uavInstance];
-		break;
-	};
-
 	
 	private _currentHeight = ((getPosATL _uavInstance) select 2);
 	private _distanceRatio = _currentDistance2d / _initialDistance2d min 1.0;
@@ -222,15 +235,14 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 
 	_currentDistance2d = _uavInstance distance2D _target;
 	_currentDistance = (getPosASL _uavInstance) vectorDistance (getPosASL _target);
+	_uavCanHitTarget = true;
 	/*
 	if (_currentDistance < 15 ) then {
 			systemChat format ["Drone %1 distance to target = %2, distance2d = %3. _predictedDistance = %4", _uavInstance, _currentDistance, _currentDistance2d, _predictedDistance];
 	};*/
 };
 
-//private _uavPos = getPos _uavInstance;
-//private _targetDir = _targetPos vectorDiff _uavPos;
-// https://community.bistudio.com/wiki/isRemoteControlling check this   
+// final approach and explosion, TODO:: make explosion optional
 if (_uavCanHitTarget) then {
 	// https://community.bistudio.com/wiki/UAVControl
 	_uavInstance DoMove (position _target);
