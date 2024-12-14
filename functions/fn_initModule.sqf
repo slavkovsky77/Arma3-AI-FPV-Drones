@@ -12,7 +12,7 @@ private _customAmmo = _logic getVariable ["CustomAmmo", "SatchelCharge_Remote_Am
 private _minTargetDistance = _logic getVariable ["MinTargetDistance", 200];
 
 systemChat format [
-    "AI Drone Module:UnitKinds: %1, TargetSource: %2, MaxDistance: %3, MaxDistance2D: %4, FinalHeight: %5, AllowObjectParent: %6, CustomAmmo: %7, MinTargetDistance: %8", 
+    "FPV Drone Module: UnitKinds: %1, TargetSource: %2, MaxDistance: %3, MaxDistance2D: %4, FinalHeight: %5, AllowObjectParent: %6, CustomAmmo: %7, MinTargetDistance: %8", 
     _unitKinds, _targetSource, _maxDistance, _maxDistance2d, _finalHeight, _allowObjectParent, _customAmmo, _minTargetDistance
 ];
 
@@ -38,7 +38,7 @@ if (_droneType == "") exitWith {
         private _drones = allUnitsUAV select {typeOf _x == _droneType};
         {
             private _uavInstance = _x;
-            [_uavInstance, _unitKinds, _targetSource, _maxDistance, _maxDistance2d, _finalHeight, _allowObjectParent, _customAmmo, _minTargetDistance] spawn AI_Killer_Drones_fnc_fpvLogic;
+            [_uavInstance, _unitKinds, _targetSource, _maxDistance, _maxDistance2d, _finalHeight, _allowObjectParent, _customAmmo, _minTargetDistance] spawn FPV_AI_Drones_fnc_fpvLogic;
         } forEach _drones;
     };
 };

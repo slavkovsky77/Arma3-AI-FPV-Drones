@@ -9,3 +9,4 @@ customAmmo = "SatchelCharge_Remote_Ammo";
 minTargetDistance = 200;
 
 [droneType, unitKinds, targetSource, maxDistance, maxDistance2d, finalHeight, allowObjectParent, customAmmo, minTargetDistance] execVM "fpv.sqf";
+

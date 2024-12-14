@@ -152,7 +152,7 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 
 	if ([_target] call is_dead || (_currentDistance > 200)) then {
 		systemChat format ["Drone %1 lost the target!", _uavInstance];
-=		break;
+		break;
 	};
 	
 	private _currentHeight = ((getPosATL _uavInstance) select 2);
