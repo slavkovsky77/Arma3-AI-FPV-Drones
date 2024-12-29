@@ -111,6 +111,27 @@ class CfgVehicles {
                 tooltip = "Show debug messages in system chat";
                 defaultValue = "false";
             };
+            class HeightAdjustmentDelay: Edit {
+                property = "FPV_AI_Drones_HeightAdjustmentDelay";
+                displayName = "Height Adjustment Delay";
+                tooltip = "Base delay(seconds) for height adjustments (will be multiplied by height difference ratio)";
+                typeName = "NUMBER";
+                defaultValue = "0.5";
+            };
+            class StuckCheckInterval: Edit {
+                property = "FPV_AI_Drones_StuckCheckInterval";
+                displayName = "Stuck Check Interval";
+                tooltip = "Time between stuck checks (seconds)";
+                typeName = "NUMBER";
+                defaultValue = "10";
+            };
+            class StuckThreshold: Edit {
+                property = "FPV_AI_Drones_StuckThreshold";
+                displayName = "Stuck Detection Threshold";
+                tooltip = "Minimum relative change required to not be considered stuck (0.1 = 10%)";
+                typeName = "NUMBER";
+                defaultValue = "0.1";
+            };
         };
 
         class ModuleDescription: ModuleDescription {
@@ -181,6 +202,27 @@ class CfgVehicles {
                 typeName = "NUMBER";
                 defaultValue = "200";
             };
+            class HeightAdjustmentDelay: Edit {
+                property = "FPV_AI_Drones_HeightAdjustmentDelay";
+                displayName = "Height Adjustment Delay";
+                tooltip = "Base delay for height adjustments (will be multiplied by height difference ratio)";
+                typeName = "NUMBER";
+                defaultValue = "0.1";
+            };
+            class StuckCheckInterval: Edit {
+                property = "FPV_AI_Drones_StuckCheckInterval";
+                displayName = "Stuck Check Interval";
+                tooltip = "Time between stuck checks (seconds)";
+                typeName = "NUMBER";
+                defaultValue = "20";
+            };
+            class StuckThreshold: Edit {
+                property = "FPV_AI_Drones_StuckThreshold";
+                displayName = "Stuck Detection Threshold";
+                tooltip = "Minimum relative change required to not be considered stuck (0.1 = 10%)";
+                typeName = "NUMBER";
+                defaultValue = "0.05";
+            };
         };
 
         class ModuleDescription: ModuleDescription {
@@ -250,6 +292,27 @@ class CfgVehicles {
                 tooltip = "Minimum distance to target";
                 typeName = "NUMBER";
                 defaultValue = "200";
+            };
+            class HeightAdjustmentDelay: Edit {
+                property = "FPV_AI_Drones_HeightAdjustmentDelay";
+                displayName = "Height Adjustment Delay";
+                tooltip = "Base delay for height adjustments (will be multiplied by height difference ratio)";
+                typeName = "NUMBER";
+                defaultValue = "0.25";
+            };
+            class StuckCheckInterval: Edit {
+                property = "FPV_AI_Drones_StuckCheckInterval";
+                displayName = "Stuck Check Interval";
+                tooltip = "Time between stuck checks (seconds)";
+                typeName = "NUMBER";
+                defaultValue = "15";
+            };
+            class StuckThreshold: Edit {
+                property = "FPV_AI_Drones_StuckThreshold";
+                displayName = "Stuck Detection Threshold";
+                tooltip = "Minimum relative change required to not be considered stuck (0.1 = 10%)";
+                typeName = "NUMBER";
+                defaultValue = "0.1";
             };
         };
 

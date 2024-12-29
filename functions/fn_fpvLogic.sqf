@@ -1,4 +1,4 @@
-params ["_uavInstance", "_unitKinds", "_targetSource", "_maxDistance", "_maxDistance2d", "_finalHeight", "_allowObjectParent", "_customAmmo", "_minTargetDistance"];
+params ["_uavInstance", "_unitKinds", "_targetSource", "_maxDistance", "_maxDistance2d", "_finalHeight", "_allowObjectParent", "_customAmmo", "_minTargetDistance", "_heightAdjustmentDelay", "_stuckCheckInterval", "_stuckThreshold"];
 
 
 isUnitOfKind = {
@@ -110,11 +110,11 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 };
 
 if (isNull _nearestEnemy) then {
-	systemChat format ['Drone %1 has no target!', _uavInstance];
+	//systemChat format ['Drone %1 has no target!', _uavInstance];
 	continue;
 };
 
-systemChat format ["Target aquired for drone: %1 -> %2 (%3)", _uavInstance, _nearestEnemy, typeOf _nearestEnemy];
+//systemChat format ["Target aquired for drone: %1 -> %2 (%3)", _uavInstance, _nearestEnemy, typeOf _nearestEnemy];
 
 private _target = _nearestEnemy;
 private _cutDistance = 0;
@@ -138,10 +138,9 @@ private _ascendTimeout = 10;
 isStuck = {
     params ["_uav", "_target", "_lastDistance"];
     private _currentDistance = _uav distance _target;
-    
-    // Use relative distance change (as percentage)
     private _relativeChange = abs(_currentDistance - _lastDistance) / _lastDistance;
-    if (_relativeChange < 0.1) then {  // If distance hasn't changed by at least 10%
+    if (_relativeChange < _stuckThreshold) then {
+        //systemChat format ["Drone %1 is stuck circling! No approach progress (dist: %2m)", _uav, _currentDistance];
         true
     } else {
         false
@@ -151,7 +150,7 @@ isStuck = {
 
 handleStuckPos = {
     params ["_uav"];
-    systemChat format ["Moving stuck drone %1 to new position", _uav];
+    //systemChat format ["Moving stuck drone %1 to new position", _uav];
     
     // Get current position and move slightly in a random direction
     private _currentPos = getPosATL _uav;
@@ -191,14 +190,14 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 
 	// is_dead(_uavInstance)
 	if ([_uavInstance] call is_dead) then {
-		systemChat format ["Drone is dead!"];
+		//systemChat format ["Drone is dead!"];
 
 		break;
 	};
 
 	// Current target check
 	if ([_target] call is_dead || (_currentDistance > 200)) then {
-		systemChat format ["Drone %1 lost the target!", _uavInstance];
+		//systemChat format ["Drone %1 lost the target!", _uavInstance];
 		break;
 	};
 	
@@ -222,8 +221,9 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 			_lastSetHeight = _desiredHeight;
 			_lastSetHeightTime = _currentTime;
 			_uavInstance flyInHeight _lastSetHeight;
-			private _sleepTime = ((_currentHeight / _desiredHeight) * 0.5) max 0.1;  // 0.5 seconds per ratio, minimum 0.1
-			systemChat format ["Drone %1 setting flyInHeight = %2, _currentHeight = %3, _sleepTime = %4", _uavInstance, _lastSetHeight, _currentHeight, _sleepTime];
+			private _sleepTime = ((_currentHeight / _desiredHeight) * _heightAdjustmentDelay) max 0.1;
+			//systemChat format ["Drone %1 setting flyInHeight = %2, currentHeight = %3, sleep: %4", 
+			//	_uavInstance, _lastSetHeight, _currentHeight, _sleepTime];
 			sleep _sleepTime;
 		};
 	};
@@ -261,7 +261,7 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 		// systemChat format ["Drone %1 distance to |move vector| = %2", _uavInstance, vectorMagnitude _moveVector];
 		//_moveTimeout = 0.2;
 	} else {	
-		if (_currentTime - _lastStuckCheckTime > 10) then {
+		if (_currentTime - _lastStuckCheckTime > _stuckCheckInterval) then {
 			if ([_uavInstance, _target, _lastStuckCheckDistance] call isStuck) then {
         		[_uavInstance] call handleStuckPos;
 				break;
@@ -284,7 +284,7 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 	if (_currentTime > _lastLookForNewEnemyTime + _lastLookForNewEnemyFreq) then {
 		private _newNearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _minTargetDistance] call findNearestEnemyOfType;
 		if (!(isNull _newNearestEnemy) && (_newNearestEnemy != _target)) then {
-			systemChat format ["New target aquired for drone: %1 -> %2 (%3)", _uavInstance, _newNearestEnemy, typeOf _newNearestEnemy];
+			//systemChat format ["New target aquired for drone: %1 -> %2 (%3)", _uavInstance, _newNearestEnemy, typeOf _newNearestEnemy];
 			_target = _newNearestEnemy;
 		};
 		_lastLookForNewEnemyTime = _currentTime;
