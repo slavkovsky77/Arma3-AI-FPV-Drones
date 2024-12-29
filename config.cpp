@@ -153,7 +153,7 @@ class CfgVehicles {
                 displayName = "Max 2D Distance";
                 tooltip = "Maximum 2D distance";
                 typeName = "NUMBER";
-                defaultValue = "7";
+                defaultValue = "3";
             };
             class FinalHeight: Edit {
                 property = "FPV_AI_Drones_FinalHeight";

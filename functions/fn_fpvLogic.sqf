@@ -97,7 +97,7 @@ _uavInstance setVariable ["initialized", true];
 _uavInstance flyInHeight _maxFlyHeight;
 _uavInstance forceSpeed 150;
 _uavInstance setVariable ["jac_bonusStealth", 1.0];
-systemChat format ["Initialized drone: %1", _uavInstance];
+//systemChat format ["Initialized drone: %1", _uavInstance];
 
 //"LandVehicle", "Car", "Tank"
 private _nearestEnemy = objNull;
@@ -134,7 +134,53 @@ private _lastLookForNewEnemyTime = diag_tickTime;
 private _sleepInterval = 0.05; 
 private _ascendTimeout = 10;
 
-//while {(_currentDistance2d > _cutDistance) && (_currentDistance2d > 2) && (_currentDistance > 2)} do {
+// Add this new function at the top with other functions
+isStuck = {
+    params ["_uav", "_target", "_lastDistance"];
+    private _currentDistance = _uav distance _target;
+    
+    // Use relative distance change (as percentage)
+    private _relativeChange = abs(_currentDistance - _lastDistance) / _lastDistance;
+    if (_relativeChange < 0.1) then {  // If distance hasn't changed by at least 10%
+        true
+    } else {
+        false
+    };
+};
+
+
+handleStuckPos = {
+    params ["_uav"];
+    systemChat format ["Moving stuck drone %1 to new position", _uav];
+    
+    // Get current position and move slightly in a random direction
+    private _currentPos = getPosATL _uav;
+    private _randomOffset = [
+        (random 40) - 20,  // -20 to +20 meters X
+        (random 40) - 20,  // -20 to +20 meters Y
+        0
+    ];
+    private _newPos = _currentPos vectorAdd _randomOffset;
+    
+    // Force immediate stop, then move to new position
+    _uav forceSpeed 0;
+    sleep 2;
+    _uav move _newPos;
+    _uav forceSpeed 150;
+    sleep 2;
+};
+
+
+// ... in the main loop, add these variables before the while loop ...
+private _lastPos = getPosASL _uavInstance;
+private _lastPosTime = diag_tickTime;
+private _stuckCheckInterval = 10;
+
+// Add these variables before the main while loop
+private _lastStuckCheckDistance = _currentDistance;
+private _lastStuckCheckTime = diag_tickTime;
+
+// Modify the main while loop to include stuck detection
 while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance2d)} do {
 	sleep _sleepInterval;
 	_uavCanHitTarget = false;
@@ -150,6 +196,7 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 		break;
 	};
 
+	// Current target check
 	if ([_target] call is_dead || (_currentDistance > 200)) then {
 		systemChat format ["Drone %1 lost the target!", _uavInstance];
 		break;
@@ -165,6 +212,7 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 	//_currentHeight
 	private _setHeightFrequency = 1;
 	if ((_currentHeight + 1 >= _finalHeight) && (_currentHeight > _desiredHeight + 1) && (_currentTime > _lastSetHeightTime + _setHeightFrequency)) then {
+		
 		private _isAscend = _desiredHeight > _lastSetHeight;
 		private _ascendPossible = true;
 		if (_isAscend && (_currentTime <= _lastSetHeightTime + _ascendTimeout)) then {
@@ -174,7 +222,9 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 			_lastSetHeight = _desiredHeight;
 			_lastSetHeightTime = _currentTime;
 			_uavInstance flyInHeight _lastSetHeight;
-			// systemChat format ["Drone %1 setting flyInHeight = %2, _currentHeight = %3", _uavInstance, _lastSetHeight, _currentHeight];
+			private _sleepTime = ((_currentHeight / _desiredHeight) * 0.5) max 0.1;  // 0.5 seconds per ratio, minimum 0.1
+			systemChat format ["Drone %1 setting flyInHeight = %2, _currentHeight = %3, _sleepTime = %4", _uavInstance, _lastSetHeight, _currentHeight, _sleepTime];
+			sleep _sleepTime;
 		};
 	};
 					
@@ -210,6 +260,15 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 		_movePos = [_movePos select 0, _movePos select 1, _finalHeight];
 		// systemChat format ["Drone %1 distance to |move vector| = %2", _uavInstance, vectorMagnitude _moveVector];
 		//_moveTimeout = 0.2;
+	} else {	
+		if (_currentTime - _lastStuckCheckTime > 10) then {
+			if ([_uavInstance, _target, _lastStuckCheckDistance] call isStuck) then {
+        		[_uavInstance] call handleStuckPos;
+				break;
+			};
+			_lastStuckCheckDistance = _currentDistance;
+			_lastStuckCheckTime = _currentTime;
+		};
 	};
 
 
@@ -224,22 +283,24 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 	private _lastLookForNewEnemyFreq = 4;                     
 	if (_currentTime > _lastLookForNewEnemyTime + _lastLookForNewEnemyFreq) then {
 		private _newNearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _minTargetDistance] call findNearestEnemyOfType;
-		if (!(isNull _newNearestEnemy) && !(isNull _target) && (_newNearestEnemy != _target)) then {
-			systemChat format ["New target aquired for drone: %1 -> %2 (%3)", _uavInstance, _nearestEnemy, typeOf _nearestEnemy];
+		if (!(isNull _newNearestEnemy) && (_newNearestEnemy != _target)) then {
+			systemChat format ["New target aquired for drone: %1 -> %2 (%3)", _uavInstance, _newNearestEnemy, typeOf _newNearestEnemy];
 			_target = _newNearestEnemy;
-			continue;
 		};
 		_lastLookForNewEnemyTime = _currentTime;
 	};
 
 
+
 	_currentDistance2d = _uavInstance distance2D _target;
 	_currentDistance = (getPosASL _uavInstance) vectorDistance (getPosASL _target);
 	_uavCanHitTarget = true;
-	/*
-	if (_currentDistance < 15 ) then {
-			systemChat format ["Drone %1 distance to target = %2, distance2d = %3. _predictedDistance = %4", _uavInstance, _currentDistance, _currentDistance2d, _predictedDistance];
-	};*/
+	
+	// if (_currentDistance < 30 ) then {
+	// 	systemChat format ["Drone %1 distance to target = %2, distance2d = %3. _predictedDistance = %4", _uavInstance, _currentDistance, _currentDistance2d, _predictedDistance];
+	// };
+
+
 };
 
 // final approach and explosion, TODO:: make explosion optional
@@ -261,6 +322,7 @@ if (_uavCanHitTarget) then {
 
 };
 
-if (([_uavInstance] call is_dead) == false) then {
+// At the end of the script, ensure cleanup
+if (!isNull _uavInstance) then {
 	_uavInstance setVariable ["initialized", false];
 };
