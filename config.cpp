@@ -65,22 +65,36 @@ class CfgVehicles {
                     class Vehicles { name = "Vehicles"; value = "vehicles"; };
                 };
             };
-            class MaxDistance: Edit {
-                property = "FPV_AI_Drones_MaxDistance";
-                displayName = "Max Attack Distance";
-                tooltip = "Maximum distance for attack";
+            class InitialSearchHeight: Edit {
+                property = "FPV_AI_Drones_InitialSearchHeight";
+                displayName = "Initial Search Height";
+                tooltip = "Starting height the drone will fly at when searching for targets";
                 typeName = "NUMBER";
-                defaultValue = "7";
+                defaultValue = "50";
             };
-            class MaxDistance2D: Edit {
-                property = "FPV_AI_Drones_MaxDistance2D";
-                displayName = "Max 2D Distance";
-                tooltip = "Maximum 2D distance";
+            class TargetDetectionRange: Edit {
+                property = "FPV_AI_Drones_TargetDetectionRange";
+                displayName = "Target Detection Range";
+                tooltip = "Target must be closer than this distance for drone to begin pursuit";
+                typeName = "NUMBER";
+                defaultValue = "200";
+            };
+            class AttackDistance: Edit {
+                property = "FPV_AI_Drones_AttackDistance";
+                displayName = "Attack Distance";
+                tooltip = "Distance at which drone will initiate final attack";
+                typeName = "NUMBER";
+                defaultValue = "10";
+            };
+            class AttackDistance2D: Edit {
+                property = "FPV_AI_Drones_AttackDistance2D";
+                displayName = "Horizontal Attack Distance";
+                tooltip = "Horizontal distance for attack initiation";
                 typeName = "NUMBER";
                 defaultValue = "3";
             };
-            class FinalHeight: Edit {
-                property = "FPV_AI_Drones_FinalHeight";
+            class AttackHeight: Edit {
+                property = "FPV_AI_Drones_AttackHeight";
                 displayName = "Final Attack Height";
                 tooltip = "Final height for attack";
                 typeName = "NUMBER";
@@ -98,23 +112,10 @@ class CfgVehicles {
                 tooltip = "Type of ammunition to use";
                 defaultValue = """SatchelCharge_Remote_Ammo""";
             };
-            class MinTargetDistance: Edit {
-                property = "FPV_AI_Drones_MinTargetDistance";
-                displayName = "Min Target Distance";
-                tooltip = "Minimum distance to target";
-                typeName = "NUMBER";
-                defaultValue = "200";
-            };
-            class Debug: Checkbox {
-                property = "FPV_AI_Drones_Debug";
-                displayName = "Enable Debug";
-                tooltip = "Show debug messages in system chat";
-                defaultValue = "false";
-            };
             class HeightAdjustmentDelay: Edit {
                 property = "FPV_AI_Drones_HeightAdjustmentDelay";
                 displayName = "Height Adjustment Delay";
-                tooltip = "Base delay(seconds) for height adjustments (will be multiplied by height difference ratio)";
+                tooltip = "Base delay for height adjustments (will be multiplied by height difference ratio)";
                 typeName = "NUMBER";
                 defaultValue = "0.5";
             };
@@ -131,6 +132,13 @@ class CfgVehicles {
                 tooltip = "Minimum relative change required to not be considered stuck (0.1 = 10%)";
                 typeName = "NUMBER";
                 defaultValue = "0.1";
+            };
+            class MoveAdjustmentDelay: Edit {
+                property = "FPV_AI_Drones_MoveAdjustmentDelay";
+                displayName = "Move Adjustment Delay";
+                tooltip = "Maximum delay for movement adjustments at maximum distance (seconds)";
+                typeName = "NUMBER";
+                defaultValue = "5";
             };
         };
 
@@ -162,22 +170,36 @@ class CfgVehicles {
                     class Vehicles { name = "Vehicles"; value = "vehicles"; };
                 };
             };
-            class MaxDistance: Edit {
-                property = "FPV_AI_Drones_MaxDistance";
-                displayName = "Max Attack Distance";
-                tooltip = "Maximum distance for attack";
+            class InitialSearchHeight: Edit {
+                property = "FPV_AI_Drones_InitialSearchHeight";
+                displayName = "Initial Search Height";
+                tooltip = "Starting height the drone will fly at when searching for targets";
+                typeName = "NUMBER";
+                defaultValue = "50";
+            };
+            class TargetDetectionRange: Edit {
+                property = "FPV_AI_Drones_TargetDetectionRange";
+                displayName = "Target Detection Range";
+                tooltip = "Target must be closer than this distance for drone to begin pursuit";
+                typeName = "NUMBER";
+                defaultValue = "200";
+            };
+            class AttackDistance: Edit {
+                property = "FPV_AI_Drones_AttackDistance";
+                displayName = "Attack Distance";
+                tooltip = "Distance at which drone will initiate final attack";
                 typeName = "NUMBER";
                 defaultValue = "7";
             };
-            class MaxDistance2D: Edit {
-                property = "FPV_AI_Drones_MaxDistance2D";
-                displayName = "Max 2D Distance";
-                tooltip = "Maximum 2D distance";
+            class AttackDistance2D: Edit {
+                property = "FPV_AI_Drones_AttackDistance2D";
+                displayName = "Horizontal Attack Distance";
+                tooltip = "Horizontal distance for attack initiation";
                 typeName = "NUMBER";
                 defaultValue = "3";
             };
-            class FinalHeight: Edit {
-                property = "FPV_AI_Drones_FinalHeight";
+            class AttackHeight: Edit {
+                property = "FPV_AI_Drones_AttackHeight";
                 displayName = "Final Attack Height";
                 tooltip = "Final height for attack";
                 typeName = "NUMBER";
@@ -194,13 +216,6 @@ class CfgVehicles {
                 displayName = "Custom Ammo Type";
                 tooltip = "Type of ammunition to use";
                 defaultValue = """SatchelCharge_Remote_Ammo""";
-            };
-            class MinTargetDistance: Edit {
-                property = "FPV_AI_Drones_MinTargetDistance";
-                displayName = "Min Target Distance";
-                tooltip = "Minimum distance to target";
-                typeName = "NUMBER";
-                defaultValue = "200";
             };
             class HeightAdjustmentDelay: Edit {
                 property = "FPV_AI_Drones_HeightAdjustmentDelay";
@@ -222,6 +237,20 @@ class CfgVehicles {
                 tooltip = "Minimum relative change required to not be considered stuck (0.1 = 10%)";
                 typeName = "NUMBER";
                 defaultValue = "0.05";
+            };
+            class MoveAdjustmentDelay: Edit {
+                property = "FPV_AI_Drones_MoveAdjustmentDelay";
+                displayName = "Move Adjustment Delay";
+                tooltip = "Maximum delay for movement adjustments at maximum distance (seconds)";
+                typeName = "NUMBER";
+                defaultValue = "5";
+            };
+            class MaxFlyHeight: Edit {
+                property = "FPV_AI_Drones_MaxFlyHeight";
+                displayName = "Maximum Flying Height";
+                tooltip = "Maximum height the drone will fly at when searching for targets";
+                typeName = "NUMBER";
+                defaultValue = "50";
             };
         };
 
@@ -253,22 +282,36 @@ class CfgVehicles {
                     class Vehicles { name = "Vehicles"; value = "vehicles"; };
                 };
             };
-            class MaxDistance: Edit {
-                property = "FPV_AI_Drones_MaxDistance";
-                displayName = "Max Attack Distance";
-                tooltip = "Maximum distance for attack";
+            class InitialSearchHeight: Edit {
+                property = "FPV_AI_Drones_InitialSearchHeight";
+                displayName = "Initial Search Height";
+                tooltip = "Starting height the drone will fly at when searching for targets";
+                typeName = "NUMBER";
+                defaultValue = "50";
+            };
+            class TargetDetectionRange: Edit {
+                property = "FPV_AI_Drones_TargetDetectionRange";
+                displayName = "Target Detection Range";
+                tooltip = "Target must be closer than this distance for drone to begin pursuit";
+                typeName = "NUMBER";
+                defaultValue = "200";
+            };
+            class AttackDistance: Edit {
+                property = "FPV_AI_Drones_AttackDistance";
+                displayName = "Attack Distance";
+                tooltip = "Distance at which drone will initiate final attack";
                 typeName = "NUMBER";
                 defaultValue = "30";
             };
-            class MaxDistance2D: Edit {
-                property = "FPV_AI_Drones_MaxDistance2D";
-                displayName = "Max 2D Distance";
-                tooltip = "Maximum 2D distance";
+            class AttackDistance2D: Edit {
+                property = "FPV_AI_Drones_AttackDistance2D";
+                displayName = "Horizontal Attack Distance";
+                tooltip = "Horizontal distance for attack initiation";
                 typeName = "NUMBER";
                 defaultValue = "8";
             };
-            class FinalHeight: Edit {
-                property = "FPV_AI_Drones_FinalHeight";
+            class AttackHeight: Edit {
+                property = "FPV_AI_Drones_AttackHeight";
                 displayName = "Final Attack Height";
                 tooltip = "Final height for attack";
                 typeName = "NUMBER";
@@ -285,13 +328,6 @@ class CfgVehicles {
                 displayName = "Custom Ammo Type";
                 tooltip = "Type of ammunition to use";
                 defaultValue = """DemoCharge_Remote_Ammo""";
-            };
-            class MinTargetDistance: Edit {
-                property = "FPV_AI_Drones_MinTargetDistance";
-                displayName = "Min Target Distance";
-                tooltip = "Minimum distance to target";
-                typeName = "NUMBER";
-                defaultValue = "200";
             };
             class HeightAdjustmentDelay: Edit {
                 property = "FPV_AI_Drones_HeightAdjustmentDelay";
@@ -313,6 +349,13 @@ class CfgVehicles {
                 tooltip = "Minimum relative change required to not be considered stuck (0.1 = 10%)";
                 typeName = "NUMBER";
                 defaultValue = "0.1";
+            };
+            class MoveAdjustmentDelay: Edit {
+                property = "FPV_AI_Drones_MoveAdjustmentDelay";
+                displayName = "Move Adjustment Delay";
+                tooltip = "Maximum delay for movement adjustments at maximum distance (seconds)";
+                typeName = "NUMBER";
+                defaultValue = "5";
             };
         };
 

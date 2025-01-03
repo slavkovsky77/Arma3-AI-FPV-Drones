@@ -1,4 +1,19 @@
-params ["_uavInstance", "_unitKinds", "_targetSource", "_maxDistance", "_maxDistance2d", "_finalHeight", "_allowObjectParent", "_customAmmo", "_minTargetDistance", "_heightAdjustmentDelay", "_stuckCheckInterval", "_stuckThreshold"];
+params [
+    "_uavInstance",
+    "_unitKinds",
+    "_targetSource",
+    "_attackDistance",
+    "_attackDistance2D",
+    "_attackHeight",
+    "_allowObjectParent",
+    "_customAmmo",
+    "_targetDetectionRange",
+    "_heightAdjustmentDelay",
+    "_stuckCheckInterval",
+    "_stuckThreshold",
+    "_moveAdjustmentDelay",
+    "_initialSearchHeight"
+];
 
 
 isUnitOfKind = {
@@ -17,7 +32,7 @@ isUnitOfKind = {
 
 // Function to find the nearest enemy of a specific type
 findNearestEnemyOfType = {
-    params ["_uavInstance", "_unitKinds", "_targetSource", "_allowObjectParent", "_minTargetDistance"];
+    params ["_uavInstance", "_unitKinds", "_targetSource", "_allowObjectParent", "_targetDetectionRange"];
     //systemChat format ["findNearestEnemyOfType: %1", _uavInstance];
 
     private _enemy_side = switch (side _uavInstance) do {
@@ -35,7 +50,7 @@ findNearestEnemyOfType = {
     };
     //systemChat format ["Enemies: %1", count _enemies];
     private _nearestEnemy = objNull;
-    private _minDistance = _minTargetDistance;
+    private _minDistance = _targetDetectionRange;
     private _uniqueTypes = [];
 
     {
@@ -85,7 +100,6 @@ isExternallyControlled = {
 };
 
 private _initialized = _uavInstance getVariable ["initialized", false];
-private _maxFlyHeight = 30;
 
 if (_initialized) exitWith {}; 
 
@@ -94,10 +108,10 @@ _uavInstance setSkill 1;
 _uavInstance enableAI "ALL";
 _uavInstance setSpeedMode "FULL";
 _uavInstance setVariable ["initialized", true];
-_uavInstance flyInHeight _maxFlyHeight;
+_uavInstance flyInHeight _initialSearchHeight;
 _uavInstance forceSpeed 150;
 _uavInstance setVariable ["jac_bonusStealth", 1.0];
-//systemChat format ["Initialized drone: %1", _uavInstance];
+systemChat format ["Initialized drone: %1", _uavInstance];
 
 //"LandVehicle", "Car", "Tank"
 private _nearestEnemy = objNull;
@@ -105,7 +119,7 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 	if ([_uavInstance] call is_dead) then {
 		break;
 	};
-	_nearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _minTargetDistance] call findNearestEnemyOfType;
+	_nearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange] call findNearestEnemyOfType;
 	sleep (1);
 };
 
@@ -117,14 +131,13 @@ if (isNull _nearestEnemy) then {
 //systemChat format ["Target aquired for drone: %1 -> %2 (%3)", _uavInstance, _nearestEnemy, typeOf _nearestEnemy];
 
 private _target = _nearestEnemy;
-private _cutDistance = 0;
 private _currentDistance2d = _uavInstance distance2D _target;
 private _currentDistance = (getPosASL _uavInstance) vectorDistance (getPosASL _target);
 
 private _initialDistance2d = _currentDistance2d;
 //private _initialHeight = ((getPosATL _uavInstance) select 2);
 
-private _lastSetHeight = _maxFlyHeight;
+private _lastSetHeight = _initialSearchHeight;
 private _lastSetHeightTime = diag_tickTime;
 private _uavCanHitTarget = false;
 private _predictedDistance = _currentDistance;
@@ -152,35 +165,38 @@ handleStuckPos = {
     params ["_uav"];
     //systemChat format ["Moving stuck drone %1 to new position", _uav];
     
-    // Get current position and move slightly in a random direction
+    // Get current position and height
     private _currentPos = getPosATL _uav;
+    private _currentHeight = _currentPos select 2;
+    
+    // Calculate new position while maintaining height
     private _randomOffset = [
-        (random 40) - 20,  // -20 to +20 meters X
-        (random 40) - 20,  // -20 to +20 meters Y
-        0
+        (random 100) - 50,  // -20 to +20 meters X
+        (random 100) - 50,  // -20 to +20 meters Y
+        (random 100) - 50
     ];
     private _newPos = _currentPos vectorAdd _randomOffset;
     
     // Force immediate stop, then move to new position
     _uav forceSpeed 0;
     sleep 2;
+    _uav flyInHeight _currentHeight + (_randomOffset select 2);  // Maintain current flyInHeight
     _uav move _newPos;
     _uav forceSpeed 150;
-    sleep 2;
+    sleep 5;
 };
 
 
 // ... in the main loop, add these variables before the while loop ...
 private _lastPos = getPosASL _uavInstance;
 private _lastPosTime = diag_tickTime;
-private _stuckCheckInterval = 10;
 
 // Add these variables before the main while loop
 private _lastStuckCheckDistance = _currentDistance;
 private _lastStuckCheckTime = diag_tickTime;
 
 // Modify the main while loop to include stuck detection
-while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance2d)} do {
+while {(_predictedDistance > _attackDistance) || (_currentDistance2d > _attackDistance2D)} do {
 	sleep _sleepInterval;
 	_uavCanHitTarget = false;
 
@@ -191,7 +207,6 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 	// is_dead(_uavInstance)
 	if ([_uavInstance] call is_dead) then {
 		//systemChat format ["Drone is dead!"];
-
 		break;
 	};
 
@@ -203,26 +218,25 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 	
 	private _currentHeight = ((getPosATL _uavInstance) select 2);
 	private _distanceRatio = _currentDistance2d / _initialDistance2d min 1.0;
-	private _desiredHeight = _finalHeight + (_maxFlyHeight - _finalHeight) * _distanceRatio;
+	private _desiredHeight = _attackHeight + (_initialSearchHeight - _attackHeight) * _distanceRatio;
 	private _currentTime = diag_tickTime;
 	
 	//if ((_currentHeight < _desiredHeight && (_currentTime > _lastSetHeightTime + _ascendTimeout)) || (_currentHeight > _desiredHeight)) then {
 	
 	//_currentHeight
 	private _setHeightFrequency = 1;
-	if ((_currentHeight + 1 >= _finalHeight) && (_currentHeight > _desiredHeight + 1) && (_currentTime > _lastSetHeightTime + _setHeightFrequency)) then {
+	if ((_currentHeight + 1 >= _attackHeight) && (_currentHeight > _desiredHeight + 1) && (_currentTime > _lastSetHeightTime + _setHeightFrequency)) then {
 		
-		private _isAscend = _desiredHeight > _lastSetHeight;
-		private _ascendPossible = true;
-		if (_isAscend && (_currentTime <= _lastSetHeightTime + _ascendTimeout)) then {
-			_ascendPossible = false;
+		private _canChangeHeight = true;
+		if ((_desiredHeight > _lastSetHeight) && (_currentTime <= _lastSetHeightTime + _ascendTimeout)) then {
+			_canChangeHeight = false;
 		};
-		if (_ascendPossible) then {
+		if (_canChangeHeight) then {
 			_lastSetHeight = _desiredHeight;
 			_lastSetHeightTime = _currentTime;
 			_uavInstance flyInHeight _lastSetHeight;
 			private _sleepTime = ((_currentHeight / _desiredHeight) * _heightAdjustmentDelay) max 0.1;
-			//systemChat format ["Drone %1 setting flyInHeight = %2, currentHeight = %3, sleep: %4", 
+			//systemChat format ["Drone %1 setting flyInHeight = %2, currentHeight = %3, sleep: %4",
 			//	_uavInstance, _lastSetHeight, _currentHeight, _sleepTime];
 			sleep _sleepTime;
 		};
@@ -249,15 +263,15 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 
 	private _movePos = getPosATL _target;
 	//private _moveTimeout = 5;
-	if (_predictedDistance < _maxDistance * 2) then {
+	if (_predictedDistance < _attackDistance * 2) then {
 		private _uavPosATL = getPosATL _uavInstance;
 		private _targetPosATL = getPosATL _target;
 		private _moveVector = (_targetPosATL vectorDiff _uavPosATL);
 		_moveVector = vectorNormalized _moveVector;
-		_moveVector = _moveVector vectorMultiply (_predictedDistance + 1.5*_maxDistance2d);
+		_moveVector = _moveVector vectorMultiply (_predictedDistance + 1.5*_attackDistance2D);
 		
 		_movePos = _uavPosATL vectorAdd _moveVector;
-		_movePos = [_movePos select 0, _movePos select 1, _finalHeight];
+		_movePos = [_movePos select 0, _movePos select 1, _attackHeight];
 		// systemChat format ["Drone %1 distance to |move vector| = %2", _uavInstance, vectorMagnitude _moveVector];
 		//_moveTimeout = 0.2;
 	} else {	
@@ -274,6 +288,15 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 
 	//if (_currentTime > _lastMoveTime + _moveTimeout) then {
 	_uavInstance DoMove _movePos;
+	// Scale sleep based on how far we are from both min and max distances
+	private _distanceRange = _targetDetectionRange - _attackDistance;
+	private _distanceFromMax = (_predictedDistance - _attackDistance) max 0;
+	private _distanceRatio = (_distanceFromMax / _distanceRange) min 1.0;
+	private _moveSleepTime = ((_distanceRatio * _distanceRatio) * _moveAdjustmentDelay) max 0.01;
+
+	//systemChat format ["Move - Distance: %1, Ratio: %2, Sleep: %3", _predictedDistance, _distanceRatio, _moveSleepTime];
+	sleep _moveSleepTime;
+
 	_uavInstance forceSpeed 150;
 	_lastMoveTime = _currentTime;
 	//};
@@ -282,7 +305,7 @@ while {(_predictedDistance > _maxDistance) || (_currentDistance2d > _maxDistance
 	// occasionally look for new enemy
 	private _lastLookForNewEnemyFreq = 4;                     
 	if (_currentTime > _lastLookForNewEnemyTime + _lastLookForNewEnemyFreq) then {
-		private _newNearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _minTargetDistance] call findNearestEnemyOfType;
+		private _newNearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange] call findNearestEnemyOfType;
 		if (!(isNull _newNearestEnemy) && (_newNearestEnemy != _target)) then {
 			//systemChat format ["New target aquired for drone: %1 -> %2 (%3)", _uavInstance, _newNearestEnemy, typeOf _newNearestEnemy];
 			_target = _newNearestEnemy;
@@ -317,7 +340,7 @@ if (_uavCanHitTarget) then {
 	};
 
 	_uavInstance deleteVehicleCrew driver _uavInstance;
-	sleep 3;
+	sleep 2;
 	_uavInstance setDamage 1;
 
 };
