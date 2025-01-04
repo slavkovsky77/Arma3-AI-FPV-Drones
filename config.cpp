@@ -108,8 +108,8 @@ class CfgVehicles {
             };
             class CustomAmmo: Edit {
                 property = "FPV_AI_Drones_CustomAmmo";
-                displayName = "Custom Ammo Type";
-                tooltip = "Type of ammunition to use";
+                displayName = "Custom Ammo Types";
+                tooltip = "Types of ammunition to use (comma-separated, e.g., 'SatchelCharge_Remote_Ammo,DemoCharge_Remote_Ammo')";
                 defaultValue = """SatchelCharge_Remote_Ammo""";
             };
             class HeightAdjustmentDelay: Edit {
@@ -175,7 +175,7 @@ class CfgVehicles {
                 displayName = "Initial Search Height";
                 tooltip = "Starting height the drone will fly at when searching for targets";
                 typeName = "NUMBER";
-                defaultValue = "50";
+                defaultValue = "30";
             };
             class TargetDetectionRange: Edit {
                 property = "FPV_AI_Drones_TargetDetectionRange";
@@ -189,7 +189,7 @@ class CfgVehicles {
                 displayName = "Attack Distance";
                 tooltip = "Distance at which drone will initiate final attack";
                 typeName = "NUMBER";
-                defaultValue = "7";
+                defaultValue = "10";
             };
             class AttackDistance2D: Edit {
                 property = "FPV_AI_Drones_AttackDistance2D";
@@ -213,8 +213,8 @@ class CfgVehicles {
             };
             class CustomAmmo: Edit {
                 property = "FPV_AI_Drones_CustomAmmo";
-                displayName = "Custom Ammo Type";
-                tooltip = "Type of ammunition to use";
+                displayName = "Custom Ammo Types";
+                tooltip = "Types of ammunition to use (comma-separated, e.g., 'SatchelCharge_Remote_Ammo,DemoCharge_Remote_Ammo')";
                 defaultValue = """SatchelCharge_Remote_Ammo""";
             };
             class HeightAdjustmentDelay: Edit {
@@ -244,13 +244,6 @@ class CfgVehicles {
                 tooltip = "Maximum delay for movement adjustments at maximum distance (seconds)";
                 typeName = "NUMBER";
                 defaultValue = "5";
-            };
-            class MaxFlyHeight: Edit {
-                property = "FPV_AI_Drones_MaxFlyHeight";
-                displayName = "Maximum Flying Height";
-                tooltip = "Maximum height the drone will fly at when searching for targets";
-                typeName = "NUMBER";
-                defaultValue = "50";
             };
         };
 
@@ -325,8 +318,8 @@ class CfgVehicles {
             };
             class CustomAmmo: Edit {
                 property = "FPV_AI_Drones_CustomAmmo";
-                displayName = "Custom Ammo Type";
-                tooltip = "Type of ammunition to use";
+                displayName = "Custom Ammo Types";
+                tooltip = "Types of ammunition to use (comma-separated, e.g., 'SatchelCharge_Remote_Ammo,DemoCharge_Remote_Ammo')";
                 defaultValue = """DemoCharge_Remote_Ammo""";
             };
             class HeightAdjustmentDelay: Edit {

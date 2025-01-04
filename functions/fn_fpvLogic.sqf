@@ -326,23 +326,31 @@ while {(_predictedDistance > _attackDistance) || (_currentDistance2d > _attackDi
 
 };
 
-// final approach and explosion, TODO:: make explosion optional
+// final approach and explosion
 if (_uavCanHitTarget) then {
-	// https://community.bistudio.com/wiki/UAVControl
-	_uavInstance DoMove (position _target);
-	sleep 0.5;
+    _uavInstance doMove (position _target);
+    sleep 0.5;
 
-	private _explosives = [];
-	for "_i" from 1 to 3 do {
-		private _explosive = _customAmmo createVehicle (position _uavInstance);
-		_explosive attachTo [_uavInstance, [0, 0, 0]];
-		_explosives pushBack _explosive;
-	};
+    // Split the ammo string and create multiple explosives
+    private _ammoTypes = _customAmmo splitString ",";
+    private _explosives = [];
+    
+    {
+        private _explosive = _x createVehicle (position _uavInstance);
+        _explosive attachTo [_uavInstance, [0, 0, 0]];
+        _explosives pushBack _explosive;
+    } forEach _ammoTypes;
 
-	_uavInstance deleteVehicleCrew driver _uavInstance;
-	sleep 2;
-	_uavInstance setDamage 1;
-
+    _uavInstance deleteVehicleCrew driver _uavInstance;
+    sleep 3;
+    
+    // Detach and detonate all explosives
+    {
+        detach _x;
+        _x setDamage 1;
+    } forEach _explosives;
+    
+    _uavInstance setDamage 1;
 };
 
 // At the end of the script, ensure cleanup
