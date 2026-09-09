@@ -3,7 +3,7 @@
 Written 2026-09-09, from the Steam Workshop comment backlog (Jul 2025 → Jun 2026) read against the
 code at commit `6c230b0`.
 
-Line references point at that commit. Anything I could prove by reading the code is marked
+Line references describe the code **as it was at `6c230b0`**, before the Tier 0-3 fixes landed; they're kept so each diagnosis stays checkable against the original. Anything I could prove by reading the code is marked
 **Confirmed**; anything that fits the symptoms but that I could not verify without running the game
 is marked **Hypothesis** — test those before rewriting around them.
 
@@ -15,11 +15,15 @@ Grouping the comments by root cause rather than by author:
 
 | # | Theme | Who | Status |
 |---|-------|-----|--------|
-| 6 | **Zeus support** | chorizos, stez, JaySOC, Kibbe_Surdo, БАНДИТСКИЙ КРАЙ, hexenkeit | Not started |
-| 4 | **Drones do nothing / don't move / don't kill** | whiskey, gabberstabber, Fylon ×2, Headless_hashbrown | Root causes identified below |
-| 2 | **No .bikey — can't run on a server** | WoLFoR, Efremio | Not started |
+| 6 | **Zeus support** | chorizos, stez, JaySOC, Kibbe_Surdo, БАНДИТСКИЙ КРАЙ, hexenkeit | ✅ **Implemented — needs in-game testing** |
+| 4 | **Drones do nothing / don't move / don't kill** | whiskey, gabberstabber, Fylon ×2, Headless_hashbrown | ✅ **Implemented — needs in-game testing** |
+| 2 | **No .bikey — can't run on a server** | WoLFoR, Efremio | ✅ **Done — key generated, PBO signed** |
 | 2 | **Chat spam** | Quarter, CoffeePot | ✅ **Fixed in `6c230b0`** |
-| 3 | **Mod compatibility** (VCOM, Antistasi, DRO) | Redneck Wolf, shark09stormYT, eth | Needs explicit handling |
+| 3 | **Mod compatibility** (VCOM, Antistasi, DRO) | Redneck Wolf, shark09stormYT, eth | Still open — see Tier 4 |
+
+> **Everything marked "needs in-game testing" is written but has not been run in Arma.** The config
+> parses (`CfgConvert`, exit 0) and the SQF brace/paren balance is clean, but neither of those catches
+> a runtime error. See §4 for the test checklist.
 
 Two of these — Zeus and signing — are the difference between "a mod I can try in the editor" and "a
 mod my group can actually run". They're where the leverage is.
@@ -374,9 +378,51 @@ is the complaint you're already getting.
 
 ---
 
-## 4. Before you start: get RPT logging visible
+## 4. Test checklist for what was just implemented
 
-Several bugs above (0.3, 0.4, 0.5) throw script errors that nobody has reported, because Arma hides
+Launch with `-showScriptErrors` and keep `%LOCALAPPDATA%\Arma 3\Arma3_x64_*.rpt` open. Work down in
+order; each step depends on the one above it.
+
+**Eden — the whiskey / gabberstabber case**
+
+1. Place a Crocus AT as an **empty vehicle** (no crew), sync the AT module, put a tank ~300 m away.
+   - Expect: the drone gets a UAV crew automatically, lifts off, and hits the tank.
+   - Before this change it sat motionless — that's the bug being verified.
+2. Place the module with **nothing synced**.
+   - Expect: a system-chat warning and an RPT line, not silence.
+
+**AP behaviour — the Fylon / Headless_hashbrown case**
+
+3. AP module + Crocus AP vs. a squad of infantry.
+   - Expect: the drone closes, **dives**, and kills. Watch specifically for the old failure — circling
+     without connecting, or detonating high enough that everyone walks away.
+   - If it still circles, the overshoot cap in `fn_fpvLogic.sqf` is the knob (`_overshoot`).
+
+**Zeus — the six-request feature**
+
+4. Zeus mission, spawn a drone, **drop the module onto it**. Expect engagement.
+5. Spawn a drone, place the module on the **ground within 100 m**. Expect it to adopt the drone.
+6. Confirm the modules appear under Modules → Effects at all. If they don't, `scopeCurator` is the
+   thing to re-check — that's the one config property I couldn't verify offline.
+
+**Multiplayer — the Efremio case and the "explode in unison" report**
+
+7. Host a local MP session with one other client. One drone, one target.
+   - Expect **exactly one** set of explosives. Several sets means the `isServer` guard isn't holding.
+   - Check the client's RPT as well as the server's.
+8. Confirm chat messages reach the client when Enable Chat Messages is ticked — that path now goes
+   through `remoteExec`, so it's new code.
+
+**Signing**
+
+9. Load the mod from a server with `verifySignatures = 2`, with `keys\fpv_ai_drones_v1_1.bikey`
+   installed. Expect a clean join.
+
+---
+
+## 5. Reading the RPT
+
+Several of the bugs fixed above (0.3, 0.4, 0.5) threw script errors that nobody ever reported, because Arma hides
 them by default. Launch with `-showScriptErrors` and watch:
 
 ```

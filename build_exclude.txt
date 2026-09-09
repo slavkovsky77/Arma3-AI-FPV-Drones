@@ -1,0 +1,7 @@
+*.ps1
+*.md
+*.txt
+*.biprivatekey
+*.bikey
+*.gitignore
+.git\*

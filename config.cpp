@@ -37,10 +37,15 @@ class CfgVehicles {
 
     class FPV_AI_Drones_Module: Module_F {
         scope = 2;
+        // Zeus: scopeCurator puts the module in the curator module tree, and
+        // curatorCanAttach lets it be dropped directly onto a specific drone.
+        // The AT and AP modules inherit both from here.
+        scopeCurator = 2;
+        curatorCanAttach = 1;
         displayName = "FPV AI Drones";
         icon = "\A3\Modules_F_Curator\Data\iconSmoke_ca.paa";
         category = "Effects";
-        
+
         function = "FPV_AI_Drones_fnc_initModule";
         functionPriority = 1;
         isGlobal = 1;

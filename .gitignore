@@ -1,0 +1,9 @@
+# NEVER commit a signing private key. Anyone holding it can sign malicious PBOs
+# that your users' servers will accept as genuine.
+*.biprivatekey
+
+# Build output
+*.pbo
+*.bisign
+*.bikey
+temp/
