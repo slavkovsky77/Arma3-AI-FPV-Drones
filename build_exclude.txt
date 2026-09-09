@@ -5,3 +5,4 @@
 *.bikey
 *.gitignore
 .git\*
+mod.cpp

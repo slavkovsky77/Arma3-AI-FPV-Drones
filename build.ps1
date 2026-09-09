@@ -73,6 +73,24 @@ Get-ChildItem -Path $AddonsDir -Filter "fpv_ai_drones.pbo.*.bisign" -ErrorAction
 Invoke-Tool $AddonBuilder @($SrcDir, $AddonsDir, "-clear", "-packonly", "-exclude=$(Join-Path $SrcDir "build_exclude.txt")")
 if (-not (Test-Path $Pbo)) { throw "AddonBuilder did not produce $Pbo" }
 
+# --- mod root metadata -------------------------------------------------------
+# mod.cpp is kept in source control alongside the addon, but Arma only reads it
+# from the mod ROOT. It is excluded from the PBO (build_exclude.txt) because a
+# copy packed inside the archive is inert.
+Copy-Item (Join-Path $SrcDir "mod.cpp") (Join-Path $ModDir "mod.cpp") -Force
+Write-Host "Copied mod.cpp to mod root."
+
+# meta.cpp carries the Workshop publishedid. Without it the Publisher uploads a
+# NEW Workshop item instead of updating the existing one.
+$Meta = Join-Path $ModDir "meta.cpp"
+if (-not (Test-Path $Meta)) {
+    Write-Warning "No meta.cpp at $ModDir - publishing from here would create a DUPLICATE Workshop item."
+    Write-Warning "Create it with the publishedid from your Workshop URL before uploading:"
+    Write-Warning '    protocol = 1;'
+    Write-Warning '    publishedid = <id from ...?id=NNNNNNNNNN>;'
+    Write-Warning '    name = "FPV AI Drones";'
+}
+
 # --- sign --------------------------------------------------------------------
 Write-Host "Signing with $KeyName ..."
 Invoke-Tool $DSSignFile @($PrivateKey, $Pbo)

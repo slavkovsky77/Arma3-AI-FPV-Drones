@@ -1,12 +1,9 @@
 name = "FPV AI Drones";
-picture = "logo.paa";  // Optional
 actionName = "GitHub";
-action = "https://github.com/yourusername/fpv_ai_drones";  // Optional
-description = "AI-controlled FPV kamikaze drones that target vehicles";
-logo = "logo.paa";  // Optional
-logoOver = "logo.paa";  // Optional
+action = "https://github.com/slavkovsky77/Arma3-AI-FPV-Drones";
+description = "AI-controlled FPV kamikaze drones that hunt and attack enemy vehicles and infantry. Works in the Eden editor and in Zeus.";
 tooltip = "FPV AI Drones";
 tooltipOwned = "FPV AI Drones Owned";
-overview = "This mod adds AI-controlled FPV kamikaze drones that automatically target and attack enemy vehicles.";
-author = "Your Name";
-version = "1.0.0"; 
+overview = "Adds AI-controlled FPV kamikaze drones that automatically acquire and attack enemy targets. Place a drone, synchronise the module, and it hunts on its own - no UAV terminal needed. Anti-Tank and Anti-Personnel presets, full Zeus support, and server-signed.";
+author = "slavkovsky77";
+version = "1.1.0";
