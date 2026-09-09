@@ -34,7 +34,7 @@ $SrcDir     = $PSScriptRoot                                  # ...\FPV_AI_Drones
 $AddonsDir  = Split-Path $SrcDir -Parent                     # ...\FPV_AI_Drones\addons
 $ModDir     = Split-Path $AddonsDir -Parent                  # ...\FPV_AI_Drones
 $KeysDir    = Join-Path $ModDir "keys"                       # shipped public key
-$PrivateDir = Join-Path $ModDir "private_keys"               # NEVER distribute this
+$PrivateDir = Join-Path (Split-Path $ModDir -Parent) "fpv_ai_drones_private"   # OUTSIDE $ModDir: Publisher uploads the whole mod folder
 $Pbo        = Join-Path $AddonsDir "fpv_ai_drones.pbo"
 
 $AddonBuilder = Join-Path $ToolsDir "AddonBuilder\AddonBuilder.exe"
@@ -101,4 +101,4 @@ Write-Host "  $Pbo"
 Get-ChildItem -Path $AddonsDir -Filter "*.bisign" | ForEach-Object { Write-Host "  $($_.FullName)" }
 Write-Host "  $PublicKey"
 Write-Host ""
-Write-Host "Keep $PrivateDir out of the mod folder you upload."
+Write-Host "Private key (never distribute, never commit): $PrivateDir"
