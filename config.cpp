@@ -55,6 +55,12 @@ class CfgVehicles {
                 tooltip = "Array of unit types to target (e.g., LandVehicle,Car,Tank)";
                 defaultValue = """LandVehicle,Car,Tank""";
             };
+            class EnableChatMessages: Checkbox {
+                property = "FPV_AI_Drones_EnableChatMessages";
+                displayName = "Enable Chat Messages";
+                tooltip = "Show system chat notifications for drone events";
+                defaultValue = "false";
+            };
             class TargetSource: Combo {
                 property = "FPV_AI_Drones_TargetSource";
                 displayName = "Target Source";
@@ -160,6 +166,12 @@ class CfgVehicles {
                 tooltip = "Array of unit types to target";
                 defaultValue = """LandVehicle,Car,Tank""";
             };
+            class EnableChatMessages: Checkbox {
+                property = "FPV_AI_Drones_EnableChatMessages";
+                displayName = "Enable Chat Messages";
+                tooltip = "Show system chat notifications for drone events";
+                defaultValue = "false";
+            };
             class TargetSource: Combo {
                 property = "FPV_AI_Drones_TargetSource";
                 displayName = "Target Source";
@@ -264,6 +276,12 @@ class CfgVehicles {
                 displayName = "Target Unit Types";
                 tooltip = "Array of unit types to target";
                 defaultValue = """Man""";
+            };
+            class EnableChatMessages: Checkbox {
+                property = "FPV_AI_Drones_EnableChatMessages";
+                displayName = "Enable Chat Messages";
+                tooltip = "Show system chat notifications for drone events";
+                defaultValue = "false";
             };
             class TargetSource: Combo {
                 property = "FPV_AI_Drones_TargetSource";

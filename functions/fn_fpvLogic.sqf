@@ -12,7 +12,8 @@ params [
     "_stuckCheckInterval",
     "_stuckThreshold",
     "_moveAdjustmentDelay",
-    "_initialSearchHeight"
+    "_initialSearchHeight",
+    "_enableChat"
 ];
 
 
@@ -35,18 +36,13 @@ findNearestEnemyOfType = {
     params ["_uavInstance", "_unitKinds", "_targetSource", "_allowObjectParent", "_targetDetectionRange"];
     //systemChat format ["findNearestEnemyOfType: %1", _uavInstance];
 
-    private _enemy_side = switch (side _uavInstance) do {
-        case east: { west };
-        case west: { east };
-        default { civilian }; 
-    };
     private _targets = switch (_targetSource) do {
         case "allUnits": { allUnits };
         case "vehicles": { vehicles };
     };
 
     private _enemies = _targets select {
-        side _x == _enemy_side && { [_x, _unitKinds] call isUnitOfKind }
+       ([side _uavInstance, side _x] call BIS_fnc_sideIsEnemy) && { [_x, _unitKinds] call isUnitOfKind }
     };
     //systemChat format ["Enemies: %1", count _enemies];
     private _nearestEnemy = objNull;
@@ -111,7 +107,7 @@ _uavInstance setVariable ["initialized", true];
 _uavInstance flyInHeight _initialSearchHeight;
 _uavInstance forceSpeed 150;
 _uavInstance setVariable ["jac_bonusStealth", 1.0];
-systemChat format ["Initialized drone: %1", _uavInstance];
+if (_enableChat) then { systemChat format ["Initialized drone: %1", _uavInstance]; };
 
 //"LandVehicle", "Car", "Tank"
 private _nearestEnemy = objNull;

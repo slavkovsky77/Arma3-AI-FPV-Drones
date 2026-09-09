@@ -15,11 +15,14 @@ private _stuckCheckInterval = _logic getVariable ["StuckCheckInterval", 10];
 private _stuckThreshold = _logic getVariable ["StuckThreshold", 0.1];
 private _moveAdjustmentDelay = _logic getVariable ["MoveAdjustmentDelay", 5];
 private _initialSearchHeight = _logic getVariable ["InitialSearchHeight", 50];
+private _enableChat = _logic getVariable ["EnableChatMessages", false];
 
-systemChat format [
-    "FPV Drone Module: UnitKinds: %1, TargetSource: %2, AttackDistance: %3, AttackDistance2D: %4, AttackHeight: %5, AllowObjectParent: %6, CustomAmmo: %7, TargetDetectionRange: %8", 
-    _unitKinds, _targetSource, _attackDistance, _attackDistance2D, _attackHeight, _allowObjectParent, _customAmmo, _targetDetectionRange
-];
+if (_enableChat) then {
+    systemChat format [
+        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, AttackDistance: %3, AttackDistance2D: %4, AttackHeight: %5, AllowObjectParent: %6, CustomAmmo: %7, TargetDetectionRange: %8", 
+        _unitKinds, _targetSource, _attackDistance, _attackDistance2D, _attackHeight, _allowObjectParent, _customAmmo, _targetDetectionRange
+    ];
+};
 
 // Get the drone type from the first synchronized unit
 private _droneType = "";
@@ -31,7 +34,7 @@ private _droneType = "";
 } forEach _units;
 
 if (_droneType == "") exitWith {
-    systemChat "No UAV synchronized with module!";
+    if (_enableChat) then { systemChat "No UAV synchronized with module!"; };
 };
 
 [
@@ -48,7 +51,8 @@ if (_droneType == "") exitWith {
     _stuckCheckInterval,
     _stuckThreshold,
     _moveAdjustmentDelay,
-    _initialSearchHeight
+    _initialSearchHeight,
+    _enableChat
 ] spawn {
     params [
         "_droneType",
@@ -64,7 +68,8 @@ if (_droneType == "") exitWith {
         "_stuckCheckInterval",
         "_stuckThreshold",
         "_moveAdjustmentDelay",
-        "_initialSearchHeight"
+        "_initialSearchHeight",
+        "_enableChat"
     ];
     
     while {true} do {
@@ -86,7 +91,8 @@ if (_droneType == "") exitWith {
                 _stuckCheckInterval,
                 _stuckThreshold,
                 _moveAdjustmentDelay,
-                _initialSearchHeight
+                _initialSearchHeight,
+                _enableChat
             ] spawn FPV_AI_Drones_fnc_fpvLogic;
         } forEach _drones;
     };
