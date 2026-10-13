@@ -18,22 +18,52 @@ if !(_activated) exitWith {};
 // module is isGlobal = 1), so every client issued movement orders at the same
 // drone and every client ran createVehicle on the explosives - which has global
 // effect, so a 10-player server produced 10 sets of charges per drone.
-if (!isServer) exitWith {};
+if (!isServer) exitWith {
+    // A module placed in Zeus is created on the curator's machine and its init
+    // runs there. Hand it to the server rather than quietly doing nothing.
+    // Eden-placed modules are server-local, so clients never forward those.
+    if (local _logic) then {
+        [_logic, _units, _activated] remoteExec ["FPV_AI_Drones_fnc_initModule", 2];
+    };
+};
 
-private _unitKinds = (_logic getVariable ["UnitKinds", "LandVehicle,Car,Tank"]) splitString ",";
-private _targetSource = _logic getVariable ["TargetSource", "vehicles"];
-private _attackDistance = _logic getVariable ["AttackDistance", 7];
-private _attackDistance2D = _logic getVariable ["AttackDistance2D", 3];
-private _attackHeight = _logic getVariable ["AttackHeight", 5];
-private _allowObjectParent = _logic getVariable ["AllowObjectParent", true];
-private _customAmmo = _logic getVariable ["CustomAmmo", "SatchelCharge_Remote_Ammo"];
-private _targetDetectionRange = _logic getVariable ["TargetDetectionRange", 200];
-private _heightAdjustmentDelay = _logic getVariable ["HeightAdjustmentDelay", 0.5];
-private _stuckCheckInterval = _logic getVariable ["StuckCheckInterval", 10];
-private _stuckThreshold = _logic getVariable ["StuckThreshold", 0.1];
-private _moveAdjustmentDelay = _logic getVariable ["MoveAdjustmentDelay", 5];
-private _initialSearchHeight = _logic getVariable ["InitialSearchHeight", 50];
-private _enableChat = _logic getVariable ["EnableChatMessages", false];
+// With isGlobal = 1 the server can see both its own call and a forwarded one
+// for the same module; only the first one counts.
+if (_logic getVariable ["FPV_AI_Drones_started", false]) exitWith {};
+_logic setVariable ["FPV_AI_Drones_started", true];
+
+// Resolves one setting: the value set on the module (Eden attribute or script),
+// else THIS module class's own defaultValue from config, else a last-resort
+// fallback. Without the config step an untouched module - and every module
+// placed in Zeus, which has no attribute dialog - fell back to one generic set,
+// so the Anti-Personnel module hunted vehicles instead of infantry.
+// The resolved value is written back so it can be inspected on the module.
+private _attributesCfg = configOf _logic >> "Attributes";
+private _setting = {
+    params ["_name", "_fallback"];
+    private _value = _logic getVariable _name;
+    if (isNil "_value") then {
+        private _default = _attributesCfg >> _name >> "defaultValue";
+        _value = if (isText _default) then { call compile getText _default } else { _fallback };
+        _logic setVariable [_name, _value];
+    };
+    _value
+};
+
+private _unitKinds = (["UnitKinds", "LandVehicle,Car,Tank"] call _setting) splitString ",";
+private _targetSource = ["TargetSource", "vehicles"] call _setting;
+private _attackDistance = ["AttackDistance", 10] call _setting;
+private _attackDistance2D = ["AttackDistance2D", 3] call _setting;
+private _attackHeight = ["AttackHeight", 5] call _setting;
+private _allowObjectParent = ["AllowObjectParent", true] call _setting;
+private _customAmmo = ["CustomAmmo", "SatchelCharge_Remote_Ammo"] call _setting;
+private _targetDetectionRange = ["TargetDetectionRange", 200] call _setting;
+private _heightAdjustmentDelay = ["HeightAdjustmentDelay", 0.5] call _setting;
+private _stuckCheckInterval = ["StuckCheckInterval", 10] call _setting;
+private _stuckThreshold = ["StuckThreshold", 0.1] call _setting;
+private _moveAdjustmentDelay = ["MoveAdjustmentDelay", 5] call _setting;
+private _initialSearchHeight = ["InitialSearchHeight", 50] call _setting;
+private _enableChat = ["EnableChatMessages", false] call _setting;
 
 // How far from a Zeus-placed module to look for drones when it was dropped on
 // open ground rather than onto a specific drone.

@@ -15,13 +15,13 @@ Grouping the comments by root cause rather than by author:
 
 | # | Theme | Who | Status |
 |---|-------|-----|--------|
-| 6 | **Zeus support** | chorizos, stez, JaySOC, Kibbe_Surdo, БАНДИТСКИЙ КРАЙ, hexenkeit | ✅ **Implemented — needs in-game testing** |
-| 4 | **Drones do nothing / don't move / don't kill** | whiskey, gabberstabber, Fylon ×2, Headless_hashbrown | ✅ **Implemented — needs in-game testing** |
+| 6 | **Zeus support** | chorizos, stez, JaySOC, Kibbe_Surdo, БАНДИТСКИЙ КРАЙ, hexenkeit | ✅ **Done — passes automated SP + MP runs** (real Zeus click still to confirm) |
+| 4 | **Drones do nothing / don't move / don't kill** | whiskey, gabberstabber, Fylon ×2, Headless_hashbrown | ✅ **Done — passes automated SP + MP runs** |
 | 2 | **No .bikey — can't run on a server** | WoLFoR, Efremio | ✅ **Done — key generated, PBO signed** |
 | 2 | **Chat spam** | Quarter, CoffeePot | ✅ **Fixed in `6c230b0`** |
 | 3 | **Mod compatibility** (VCOM, Antistasi, DRO) | Redneck Wolf, shark09stormYT, eth | Still open — see Tier 4 |
 
-> **Everything marked "needs in-game testing" is written but has not been run in Arma.** The config
+> **Tested with `tests\run_tests.ps1`** (watchable SP + MP runs). The original note follows: the config
 > parses (`CfgConvert`, exit 0) and the SQF brace/paren balance is clean, but neither of those catches
 > a runtime error. See §4 for the test checklist.
 

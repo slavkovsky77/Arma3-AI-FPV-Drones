@@ -1,0 +1,23 @@
+author = "FPV AI Drones tests";
+onLoadName = "FPV AI Drones - automated test run";
+onLoadMission = "Sit back. Each stage spawns a drone and a target and the camera follows the attack.";
+
+// Joining client drops straight into the mission - no lobby, no briefing.
+skipLobby = 1;
+joinUnassigned = 1;
+disabledAI = 1;
+briefing = 0;
+debriefing = 0;
+
+// Lets you poke at things from the Escape menu after the run.
+enableDebugConsole = 2;
+
+respawn = "BASE";
+respawnDelay = 3;
+
+class Header
+{
+    gameType = "Sandbox";
+    minPlayers = 1;
+    maxPlayers = 1;
+};

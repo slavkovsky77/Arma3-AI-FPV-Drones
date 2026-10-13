@@ -18,6 +18,8 @@ class CfgFunctions {
             file = "\fpv_ai_drones\functions";
             class initModule {};
             class fpvLogic {};
+            class curatorHook { postInit = 1; };   // starts FPV modules placed in Zeus
+            class curatorPlaced {};
         };
     };
 };

@@ -58,9 +58,19 @@ failing silently.
 2. Open the Zeus module tree: **Modules → Effects → FPV AI Drones**.
 3. Either **drop the module directly onto the drone**, or place it on the ground within **100 m** of
    one — it will adopt nearby drones.
+4. Optional: give the drone **waypoints**. While it has no target it flies them in order, and
+   attacks anything it spots on the way.
+
+Works on dedicated servers: the module is placed on the Zeus player's machine and handed to the
+server, where all drone AI runs.
 
 The mod's addon needs to be available to the curator: either set the Zeus module's addons to
 **"All Addons"** in the mission, or call `addCuratorAddons` yourself.
+
+> **Why waypoints only work with the module:** a plain Crocus drone ignores waypoints - on the
+> ground it never takes off, in the air it hovers in place - because the engine marks its waypoints
+> complete without flying them. That's the drone mod's AI, not this one. A drone this module controls
+> is flown to each waypoint explicitly.
 
 ---
 
@@ -140,5 +150,26 @@ Requires **Arma 3 Tools** (Steam → Library → Tools).
 
 Outputs the PBO and `.bisign` to `..\`, and the public `.bikey` to `..\..\keys\`.
 
-The private key is written to `..\..\private_keys\` and is **git-ignored** — never commit or
-distribute it. Anyone holding it can sign PBOs that your users' servers will trust.
+The private key is written to `x\fpv_ai_drones_private\`, outside the mod folder (the Workshop
+Publisher uploads the whole mod folder) and outside the repo — never commit or distribute it.
+Anyone holding it can sign PBOs that your users' servers will trust.
+
+## Testing
+
+`tests\run_tests.ps1` plays a scripted test mission you can watch: a chase camera follows each drone
+attack, and every check is written to the RPT as `FPV_TEST|<check>|PASS/FAIL|<detail>`.
+
+```powershell
+.\tests\run_tests.ps1                  # build, then singleplayer, then multiplayer
+.\tests\run_tests.ps1 -Mode MP         # local dedicated server + your game joining it
+.\tests\run_tests.ps1 -StartStage 7    # skip stages that already pass
+.\tests\run_tests.ps1 -KeepOpen        # stay in game afterwards - press Y for Zeus
+```
+
+Stages: empty Eden-placed drone (1), AP vs infantry (2), Zeus-style attached module plus a
+same-class drone that must be left alone (3), module placed on the ground near a drone (4), module
+with no drone (5), plain-drone waypoint baselines (6, info only), managed drone sent by waypoint (7),
+module started through the Zeus code path from the player's machine (8).
+
+Only CBA and the Crocus drones are loaded - no AI mods, which change drone behaviour. Singleplayer
+pauses when the game window loses focus, so keep it in front during an SP run.
