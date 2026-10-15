@@ -1,0 +1,72 @@
+[h1]FPV AI Drones[/h1]
+AI-controlled FPV kamikaze drones. Give a drone this module and it takes off, hunts the nearest enemy within 200 m, and dives into it - no UAV terminal, no player needed.
+
+Works in the [b]Eden editor[/b] and in [b]Zeus[/b], in singleplayer and on [b]dedicated servers[/b].
+
+[h2]Features[/h2]
+[list]
+[*][b]Anti-Tank[/b] and [b]Anti-Personnel[/b] modules - vehicles or infantry, each with sensible presets
+[*][b]Zeus support[/b] - drop the module on a drone, or place it as a [b]drone station[/b]: every drone put near it is picked up, including ones you place later
+[*][b]Control All Drones Of This Type[/b] (on by default) - one module takes over every drone of its type on the map, including drones spawned later
+[*][b]Waypoints[/b] - drones fly their waypoints while searching, and attack whatever they find on the way
+[*][b]Terminal dive[/b] - the drone steers itself into the target's centre of mass and detonates on impact
+[*][b]Multiplayer-safe[/b] - all drone AI runs on the server; one explosion per drone, never one per player
+[*][b]Signed[/b] - ships with a .bikey for servers with signature checks
+[*]Two [b]example scenarios[/b] (Virtual Reality) - Play > [b]Showcases[/b]
+[/list]
+
+[h2]Quick start - Zeus[/h2]
+[olist]
+[*]Press [b]Y[/b], open [b]Modules > Effects > FPV AI Drones[/b]
+[*]Pick [b]Anti-Tank[/b] (vehicles) or [b]Anti-Personnel[/b] (infantry)
+[*]Place it [b]on a drone[/b], or on the ground as a drone station and put drones next to it
+[*]Optional: give drones a [b]waypoint[/b] toward targets further than 200 m away
+[/olist]
+A drone is controlled by the first module that picks it up - use the module type you want first.
+
+[h2]Quick start - Eden editor[/h2]
+[olist]
+[*]Place a drone (e.g. [b]Crocus AT[/b] / [b]Crocus AP[/b]) - it doesn't need a crew
+[*]Place a module from [b]Systems > Modules > Effects > FPV AI Drones[/b]
+[*][b]Sync[/b] the module to the drone(s) (F5, drag)
+[/olist]
+Want to see it set up? The mod's [b]examples[/b] folder has editable copies of both example scenarios - copy them into Documents\Arma 3\missions and open them in the editor.
+
+[h2]Module settings[/h2]
+[table]
+[tr][th]Setting[/th][th]Anti-Tank[/th][th]Anti-Personnel[/th][/tr]
+[tr][td]Target Unit Types[/td][td]LandVehicle, Car, Tank[/td][td]Man[/td][/tr]
+[tr][td]Target Detection Range[/td][td]200 m[/td][td]200 m[/td][/tr]
+[tr][td]Initial Search Height[/td][td]30 m[/td][td]50 m[/td][/tr]
+[tr][td]Payload[/td][td]Satchel charge[/td][td]Demo charge[/td][/tr]
+[tr][td]Target units inside vehicles[/td][td]Yes[/td][td]No[/td][/tr]
+[tr][td]Control All Drones Of This Type[/td][td]On[/td][td]On[/td][/tr]
+[tr][td]Enable Chat Messages[/td][td]Off[/td][td]Off[/td][/tr]
+[/table]
+Drones attack whatever is hostile to their side. They stop while a player controls them through a UAV terminal or Zeus remote control.
+
+[h2]Dedicated servers[/h2]
+Copy [b]keys\fpv_ai_drones_v1_1.bikey[/b] into your server's keys folder. All drone logic runs on the server.
+
+[h2]Requirements[/h2]
+[list]
+[*]Arma 3
+[*]A drone mod - built and tested with [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3302605900]FPV Drone Crocus Enhanced[/url] (which needs [url=https://steamcommunity.com/sharedfiles/filedetails/?id=450814997]CBA_A3[/url]); other UAVs work too
+[/list]
+
+[h2]Known issues[/h2]
+[list]
+[*]AI mods that take over unit behaviour (e.g. VCOM) can fight the drone's movement orders
+[*]A plain drone [i]without[/i] this module ignores Zeus waypoints - that's the drone's own AI, not this mod
+[/list]
+
+[h2]Links[/h2]
+[list]
+[*]Source & issues: [url=https://github.com/slavkovsky77/Arma3-AI-FPV-Drones]GitHub[/url]
+[*]Videos: [url=https://www.youtube.com/watch?v=g2kLUKKUt4A]1[/url], [url=https://www.youtube.com/watch?v=-jVqMr6jZhI]2[/url]
+[/list]
+
+[h2]Reuploads[/h2]
+[b]Do not reupload this mod or its code - modified or not - without my permission and clear credit.[/b] Want to build on it or include it in a modpack? Ask in the comments or on GitHub; I'm happy to say yes. Uploads that copy this mod without permission will be reported.
+
+Created by slavkovsky77 - version 1.1.0

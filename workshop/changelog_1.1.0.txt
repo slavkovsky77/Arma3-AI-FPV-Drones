@@ -1,0 +1,21 @@
+v1.1.0 - Zeus, multiplayer, and drones that actually hit
+
+ZEUS (most requested)
+- Modules now work in Zeus: drop one on a drone, or place it as a "drone station" - every drone put near it is picked up, including ones placed later
+- New "Control All Drones Of This Type" (on by default): one module takes over every drone of its type on the map, like the original version did
+- Zeus-placed drones work on dedicated servers (the server takes them over)
+- Drones fly their waypoints while searching and attack what they find
+
+FIXES
+- Empty drones placed in the editor now get a crew automatically (they used to just sit there)
+- Anti-Personnel module now actually targets infantry - its presets weren't being applied
+- Drones dive into the target instead of hovering above it or crashing short - much higher kill rate
+- Drones no longer break off their attack while taking off
+- Multiplayer: explosions happen once on the server, not once per player
+- No more chat spam by default (new "Enable Chat Messages" setting)
+- Uses the mission's real side relations (independent works)
+- A module can no longer take over a manned helicopter
+
+NEW
+- Signed with a .bikey for servers
+- Two example scenarios (Play > Showcases), with editable copies in the mod's examples folder

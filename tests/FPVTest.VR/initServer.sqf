@@ -351,27 +351,33 @@ terminate _trace;
 };
 
 if (FPVT_startStage <= 8) then {
-// --- Stage 8: the real module class, created on the player's machine --------
-// Closest scripted stand-in for Zeus: the module object is created on the
-// curator's client and its init runs there, not on the server.
-_drone = [[4000, 4000, 0], "B_Crocus_AT", true] call FPVT_fnc_spawnDrone;
+// --- Stage 8: drone AND module created on the player's machine, like Zeus ----
+// In multiplayer, everything a Zeus places belongs to the Zeus player's machine:
+// the module (its init runs there) and the drone with its AI crew. The server
+// must take the module AND take ownership of the drone - its attack logic only
+// drives drones it owns. Found by hand: a Zeus-placed drone that just sat there.
 _tank = [[4000, 4150, 0]] call FPVT_fnc_spawnTank;
-["Stage 8/9 - real AT module created on YOUR machine and attached to the drone, like Zeus", _drone, _tank] call FPVT_fnc_show;
-[[_drone], {
-    params ["_d"];
+missionNamespace setVariable ["FPVT_s8drone", objNull, true];
+[[], {
+    private _d = createVehicle ["B_Crocus_AT", [4000, 4000, 0], [], 0, "CAN_COLLIDE"];
+    createVehicleCrew _d;
     private _m = (createGroup sideLogic) createUnit ["FPV_AI_Drones_AT_Module", getPosATL _d, [], 0, "CAN_COLLIDE"];
     _m attachTo [_d, [0, 0, 0]];
+    missionNamespace setVariable ["FPVT_s8drone", _d, true];
     // Exactly what the mod's CuratorObjectPlaced handler does when Zeus places a
     // module. Only the event itself firing needs a real Zeus click to verify.
     [objNull, _m] call FPV_AI_Drones_fnc_curatorPlaced;
 }] remoteExec ["call", _player];
 
 private _pickupDeadline = time + 15;
-waitUntil { sleep 0.5; (_drone getVariable ["FPV_AI_Drones_managed", false]) || { time > _pickupDeadline } };
-private _managed = _drone getVariable ["FPV_AI_Drones_managed", false];
-["8a client-created module got the drone running on the server", _managed,
-    format ["managed=%1 after %2s (isServer on the creating machine: %3)",
-        _managed, round (time - _pickupDeadline + 15), isServer && { local _player }]] call FPVT_fnc_check;
+waitUntil { sleep 0.5; !isNull (missionNamespace getVariable ["FPVT_s8drone", objNull]) || { time > _pickupDeadline } };
+_drone = missionNamespace getVariable ["FPVT_s8drone", objNull];
+["Stage 8/9 - drone AND module placed from YOUR machine, like Zeus in multiplayer", _drone, _tank] call FPVT_fnc_show;
+waitUntil { sleep 0.5; ((_drone getVariable ["FPV_AI_Drones_managed", false]) && { local _drone }) || { time > _pickupDeadline } };
+private _managed = (_drone getVariable ["FPV_AI_Drones_managed", false]) && { local _drone };
+["8a player-placed drone + module: server took both", _managed,
+    format ["managed=%1 droneOwnedByServer=%2 after %3s (single-player=%4)",
+        _drone getVariable ["FPV_AI_Drones_managed", false], local _drone, round (time - _pickupDeadline + 15), !isMultiplayer]] call FPVT_fnc_check;
 if (_managed) then {
     _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
     ["8b client-created module's drone killed the tank", [_tank] call FPVT_fnc_vehicleDone,
@@ -388,11 +394,11 @@ if (FPVT_startStage <= 9) then {
 // over because it is the same type - how the mod originally behaved, and how
 // Zeus users expect it to work: place one module, then keep spawning drones.
 // Independent drones: a type no other stage uses, so no other module can claim it.
-_drone = [[5000, 4000, 0], "I_Crocus_AT", true] call FPVT_fnc_spawnDrone;
+_drone = [[5000, 4000, 0], "I_Crocus_AP", true] call FPVT_fnc_spawnDrone;
 _logic = [getPosATL _drone, FPVT_AT + [["TakeOverAllOfType", true]]] call FPVT_fnc_module;
 [_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
 sleep 3;
-private _late = [[6000, 4000, 0], "I_Crocus_AT", true] call FPVT_fnc_spawnDrone;   // 1km away, not synced
+private _late = [[6000, 4000, 0], "I_Crocus_AP", true] call FPVT_fnc_spawnDrone;   // 1km away, not synced
 _tank = [[6000, 4150, 0]] call FPVT_fnc_spawnTank;
 ["Stage 9/9 - same-type drone spawned AFTER the module, never synced: must be taken over", _late, _tank] call FPVT_fnc_show;
 

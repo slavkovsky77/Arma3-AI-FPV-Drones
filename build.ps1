@@ -80,6 +80,14 @@ if (-not (Test-Path $Pbo)) { throw "AddonBuilder did not produce $Pbo" }
 Copy-Item (Join-Path $SrcDir "mod.cpp") (Join-Path $ModDir "mod.cpp") -Force
 Write-Host "Copied mod.cpp to mod root."
 
+# The example scenarios are packed into the PBO (playable from Scenarios), but a
+# packed mission can't be opened in the editor - so also ship plain copies that
+# mission makers can drop into Documents\Arma 3\missions.
+$ExamplesDir = Join-Path $ModDir "examples"
+if (Test-Path $ExamplesDir) { Remove-Item $ExamplesDir -Recurse -Force }
+Copy-Item (Join-Path $SrcDir "missions") $ExamplesDir -Recurse
+Write-Host "Copied editable example missions to $ExamplesDir."
+
 # meta.cpp carries the Workshop publishedid. Without it the Publisher uploads a
 # NEW Workshop item instead of updating the existing one.
 $Meta = Join-Path $ModDir "meta.cpp"

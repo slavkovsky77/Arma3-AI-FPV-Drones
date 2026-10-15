@@ -94,6 +94,19 @@ private _isDroneCandidate = {
     && { (unitIsUAV _obj) || { getNumber (configOf _obj >> "isUav") == 1 } }
 };
 
+// A drone placed in Zeus belongs to the Zeus player's machine, and the attack logic
+// only drives drones the server owns (it skips the rest). Bring the drone and its
+// AI crew over to the server. Found in hands-on MP testing: a picked-up drone
+// ("B Alpha 1-3:1 REMOTE") that just sat there.
+private _takeOwnership = {
+    params ["_drone"];
+    if (local _drone) exitWith {};
+    private _from = owner _drone;
+    private _grp = group effectiveCommander _drone;
+    private _moved = if (!isNull _grp) then { _grp setGroupOwner clientOwner } else { _drone setOwner clientOwner };
+    diag_log format ["FPV_AI_Drones: drone %1 belonged to machine %2 - moving it to the server (%3)", _drone, _from, _moved];
+};
+
 // 1. Eden editor: units synchronised to the module.
 private _drones = _units select { [_x] call _isDroneCandidate };
 
@@ -131,6 +144,8 @@ if (_drones isEqualTo []) then {
     // never moves - it just sits where it was placed.
     if ((crew _x) isEqualTo []) then { createVehicleCrew _x; };
 
+    [_x] call _takeOwnership;
+
     _x setVariable ["FPV_AI_Drones_managed", true, true];
 } forEach _drones;
 
@@ -138,6 +153,12 @@ if (_drones isEqualTo []) then {
 // (the default, and how the mod originally behaved) every other drone of these
 // types is taken over too - including ones spawned later, e.g. in Zeus.
 private _droneTypes = _drones apply { typeOf _x };
+// The AT/AP modules also know their usual drone types (config fpvDefaultDroneTypes),
+// so a module placed anywhere in Zeus takes over e.g. every Crocus AT - not only
+// once it happens to have picked one up.
+if (_takeOverAllOfType) then {
+    _droneTypes append getArray (configOf _logic >> "fpvDefaultDroneTypes");
+};
 _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
 
 [
@@ -145,6 +166,7 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
     _center,
     _pickupRadius,
     _isDroneCandidate,
+    _takeOwnership,
     _droneTypes,
     _takeOverAllOfType,
     _drones,
@@ -168,6 +190,7 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
         "_center",
         "_pickupRadius",
         "_isDroneCandidate",
+        "_takeOwnership",
         "_droneTypes",
         "_takeOverAllOfType",
         "_drones",
@@ -198,6 +221,7 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 if ((crew _x) isEqualTo []) then { createVehicleCrew _x; };
                 diag_log format ["FPV_AI_Drones: module %1 picked up %2 (%3) - placed in its %4m area",
                     typeOf _logic, _x, typeOf _x, _pickupRadius];
+                [_x] call _takeOwnership;
                 _x setVariable ["FPV_AI_Drones_managed", true, true];
                 _drones pushBack _x;
                 _droneTypes pushBackUnique (typeOf _x);   // so "all of this type" covers it too
@@ -214,6 +238,7 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
             {
                 diag_log format ["FPV_AI_Drones: module %1 taking over %2 (%3) - same type, not yet controlled",
                     typeOf _logic, _x, typeOf _x];
+                [_x] call _takeOwnership;
                 _x setVariable ["FPV_AI_Drones_managed", true, true];
                 _drones pushBack _x;
             } forEach (allUnitsUAV select {

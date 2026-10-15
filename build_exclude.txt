@@ -7,3 +7,4 @@
 .git\*
 mod.cpp
 tests\*
+workshop\*

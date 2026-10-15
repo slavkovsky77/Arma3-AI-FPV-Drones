@@ -80,6 +80,21 @@ The mod's addon needs to be available to the curator: either set the Zeus module
 
 ---
 
+## Example scenarios
+
+Two VR scenarios ship with the mod - in game under **Play > Showcases**:
+
+- **FPV AI Drones - Editor example**: modules synced to empty drones in the editor; enemy armour and
+  infantry advance and get hit. Press Y for a Zeus camera.
+- **FPV AI Drones - Zeus example**: a Zeus sandbox with live Crocus drones at marked drone stations
+  and targets near and far. Also in the multiplayer mission list.
+
+Editable copies are in the mod's `examples\` folder - copy them into `Documents\Arma 3\missions` to
+open them in the editor. Sources live in `missions\` (packed into the PBO) and are copied there by
+`build.ps1`.
+
+---
+
 ## Module parameters
 
 | Parameter | AT default | AP default | What it does |

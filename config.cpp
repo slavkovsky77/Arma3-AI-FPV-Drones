@@ -170,6 +170,8 @@ class CfgVehicles {
     class FPV_AI_Drones_AT_Module: FPV_AI_Drones_Module {
         scope = 2;
         displayName = "FPV AI Drones - Anti-Tank";
+        // Drone types this module controls by default (with "Control All Drones Of This Type").
+        fpvDefaultDroneTypes[] = {"B_Crocus_AT", "O_Crocus_AT", "I_Crocus_AT"};
         icon = "\A3\Modules_F_Curator\Data\iconSmoke_ca.paa";
 
         class Attributes: AttributesBase {
@@ -287,6 +289,7 @@ class CfgVehicles {
     class FPV_AI_Drones_AP_Module: FPV_AI_Drones_Module {
         scope = 2;
         displayName = "FPV AI Drones - Anti-Personnel";
+        fpvDefaultDroneTypes[] = {"B_Crocus_AP", "O_Crocus_AP", "I_Crocus_AP"};
         icon = "\A3\Modules_F_Curator\Data\iconSmoke_ca.paa";
 
         class Attributes: AttributesBase {
@@ -401,3 +404,24 @@ class CfgVehicles {
         };
     };
 }; 
+// Example scenarios shipped with the mod (VR). They show up under Scenarios, and
+// the Zeus one also in the multiplayer mission list. Editable copies are in the
+// mod's examples\ folder (copied there by build.ps1).
+class CfgMissions {
+    class Showcases {
+        class FPV_AI_Drones_EdenExample {
+            briefingName = "FPV AI Drones - Editor example";
+            directory = "fpv_ai_drones\missions\FPV_EdenExample.VR";
+        };
+        class FPV_AI_Drones_ZeusExample {
+            briefingName = "FPV AI Drones - Zeus example";
+            directory = "fpv_ai_drones\missions\FPV_ZeusExample.VR";
+        };
+    };
+    class MPMissions {
+        class FPV_AI_Drones_ZeusExample {
+            briefingName = "FPV AI Drones - Zeus example";
+            directory = "fpv_ai_drones\missions\FPV_ZeusExample.VR";
+        };
+    };
+};

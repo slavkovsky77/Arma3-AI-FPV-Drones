@@ -22,6 +22,7 @@ param(
     [switch]$KeepOpen,
     [switch]$Fullscreen,   # for hands-on sessions (Zeus needs the mouse captured); default is windowed
     [switch]$ServerOnly,   # MP: start just the server; join it yourself from the normal Arma launcher
+    [switch]$Manual,       # hands-on: straight to Zeus, game in your normal display mode, left open (default -Mode MP)
     [int]$TimeoutMinutes = 20,
     [string]$ProfileName = "vulcan420",
     [string]$ArmaDir = "E:\SteamLibrary\steamapps\common\Arma 3"
@@ -188,6 +189,15 @@ class Missions
 }
 
 # --- main ---------------------------------------------------------------------
+if ($Manual) {
+    # Hands-on testing: no stages, no test camera on the player's machine, the game in
+    # the player's own display mode, and everything left running for them.
+    if (-not $PSBoundParameters.ContainsKey('Mode')) { $Mode = "MP" }
+    if ($Mode -eq "Both") { throw "-Manual takes -Mode SP or -Mode MP, not Both." }
+    $StartStage = 10
+    $KeepOpen = $true
+    $Fullscreen = $true
+}
 if ($ServerOnly) {
     # A hands-on session: multiplayer, server stays up, straight to Zeus unless told otherwise.
     $Mode = "MP"

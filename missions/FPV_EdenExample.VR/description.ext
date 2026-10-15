@@ -1,0 +1,17 @@
+author = "slavkovsky77";
+briefingName = "FPV AI Drones - Editor example";
+onLoadName = "FPV AI Drones - Editor example";
+onLoadMission = "Drones and modules placed in the editor. Enemy armour and infantry are on their way - watch them get hit.";
+overviewText = "Shows the editor setup: an Anti-Tank module synced to two empty Crocus AT drones, and an Anti-Personnel module synced to a Crocus AP. Enemies advance on them and the drones attack on their own. Press Y for a Zeus camera.";
+
+respawn = "BASE";
+respawnDelay = 3;
+disabledAI = 1;
+enableDebugConsole = 1;
+
+class Header
+{
+    gameType = "Sandbox";
+    minPlayers = 1;
+    maxPlayers = 1;
+};

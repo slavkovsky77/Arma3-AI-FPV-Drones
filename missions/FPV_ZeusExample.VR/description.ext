@@ -1,0 +1,18 @@
+author = "slavkovsky77";
+briefingName = "FPV AI Drones - Zeus example";
+onLoadName = "FPV AI Drones - Zeus example";
+onLoadMission = "You are Zeus. Drop an FPV AI Drones module on the drone station and watch the drones go.";
+overviewText = "A Zeus sandbox: parked Crocus drones at two marked drone stations, enemy armour and infantry nearby and further out. Press Y, place the FPV AI Drones module on a station, then keep adding drones.";
+
+respawn = "BASE";
+respawnDelay = 3;
+disabledAI = 1;
+skipLobby = 0;
+enableDebugConsole = 1;
+
+class Header
+{
+    gameType = "Zeus";
+    minPlayers = 1;
+    maxPlayers = 4;
+};
