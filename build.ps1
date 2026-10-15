@@ -103,6 +103,23 @@ if (-not (Test-Path $Meta)) {
 Write-Host "Signing with $KeyName ..."
 Invoke-Tool $DSSignFile @($PrivateKey, $Pbo)
 
+# --- release folder ------------------------------------------------------------
+# The mod folder also holds this source checkout (addons\fpv_ai_drones, including
+# .git, tests and notes). Never upload it: stage exactly what players need in a
+# separate folder and publish that.
+$ReleaseDir = Join-Path (Split-Path $ModDir -Parent) "FPV_AI_Drones_release"
+if (Test-Path $ReleaseDir) { Remove-Item $ReleaseDir -Recurse -Force }
+New-Item -ItemType Directory -Force (Join-Path $ReleaseDir "addons"), (Join-Path $ReleaseDir "keys") | Out-Null
+Copy-Item $Pbo (Join-Path $ReleaseDir "addons")
+Get-ChildItem -Path $AddonsDir -Filter "fpv_ai_drones.pbo.*.bisign" | Copy-Item -Destination (Join-Path $ReleaseDir "addons")
+Copy-Item $PublicKey (Join-Path $ReleaseDir "keys")
+Copy-Item (Join-Path $ModDir "examples") (Join-Path $ReleaseDir "examples") -Recurse
+foreach ($f in "mod.cpp", "meta.cpp") {
+    $p = Join-Path $ModDir $f
+    if (Test-Path $p) { Copy-Item $p $ReleaseDir }
+}
+Write-Host "Release folder (upload THIS one): $ReleaseDir"
+
 Write-Host ""
 Write-Host "Done. Ship these:"
 Write-Host "  $Pbo"
