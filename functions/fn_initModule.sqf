@@ -64,10 +64,14 @@ private _stuckThreshold = ["StuckThreshold", 0.1] call _setting;
 private _moveAdjustmentDelay = ["MoveAdjustmentDelay", 5] call _setting;
 private _initialSearchHeight = ["InitialSearchHeight", 50] call _setting;
 private _enableChat = ["EnableChatMessages", false] call _setting;
+// Fallback false: only a placed module (config default true) takes over by type;
+// a plain logic handed to this function by a script gets exactly what it asks for.
+private _takeOverAllOfType = ["TakeOverAllOfType", false] call _setting;
 
-// How far from a Zeus-placed module to look for drones when it was dropped on
-// open ground rather than onto a specific drone.
-private _zeusSearchRadius = 100;
+// The module's area: drones within this distance of where it was placed are
+// picked up - at placement, and any placed there later (a Zeus "drone station").
+private _pickupRadius = 100;
+private _center = getPosATL _logic;   // fixed: a module attached to a drone shouldn't drag its area along
 
 if (_enableChat) then {
     private _msg = format [
@@ -78,16 +82,16 @@ if (_enableChat) then {
     _msg remoteExec ["systemChat", 0];
 };
 
-// Deliberately accepts drones that have no crew yet: a Crocus placed as an empty
-// vehicle in the editor is not in allUnitsUAV and fails unitIsUAV, which is why
-// "I synced it and nothing happens" was the most common bug report. Crew is
-// created below.
+// A drone by config, crewed or not: a Crocus placed as an empty vehicle is not in
+// allUnitsUAV, which is why "I synced it and nothing happens" was the most common
+// bug report - crew is created for it below. Checking the UAV flag rather than
+// "is an aircraft" matters: the latter let a module grab a MANNED helicopter.
 private _isDroneCandidate = {
     params ["_obj"];
     !isNull _obj
     && { alive _obj }
     && { !(_obj isKindOf "Logic") }
-    && { (_obj isKindOf "Air") || { unitIsUAV _obj } }
+    && { (unitIsUAV _obj) || { getNumber (configOf _obj >> "isUav") == 1 } }
 };
 
 // 1. Eden editor: units synchronised to the module.
@@ -102,22 +106,24 @@ if (_drones isEqualTo []) then {
     };
 };
 
-// 3. Zeus: dropped on open ground - adopt nearby drones.
+// 3. Zeus: dropped on open ground - adopt drones already in its area. Ones placed
+//    there later are picked up by the loop below.
 if (_drones isEqualTo []) then {
-    _drones = ((getPosATL _logic) nearEntities [["Air"], _zeusSearchRadius]) select {
+    _drones = (_center nearEntities [["Air", "LandVehicle"], _pickupRadius]) select {
         [_x] call _isDroneCandidate
     };
 };
 
-if (_drones isEqualTo []) exitWith {
-    // Ignores _enableChat on purpose. A module that silently does nothing when
-    // misconfigured is what produced most of the "it doesn't work" reports.
-    private _warning = format [
-        "FPV AI Drones: module found no drone. Synchronise it with a drone in the editor, or place it on (or within %1m of) one in Zeus.",
-        _zeusSearchRadius
+if (_drones isEqualTo []) then {
+    // Not an error any more - the module waits for drones. Still always shown
+    // (ignores _enableChat): a module that silently does nothing is what produced
+    // most of the "it doesn't work" reports.
+    private _note = format [
+        "FPV AI Drones: no drone here yet - any drone placed within %1m of this module will be picked up.",
+        _pickupRadius
     ];
-    diag_log text _warning;
-    _warning remoteExec ["systemChat", 0];
+    diag_log text _note;
+    _note remoteExec ["systemChat", 0];
 };
 
 {
@@ -125,12 +131,22 @@ if (_drones isEqualTo []) exitWith {
     // never moves - it just sits where it was placed.
     if ((crew _x) isEqualTo []) then { createVehicleCrew _x; };
 
-    // Tag rather than match on typeOf. Selecting by type meant one module
-    // commandeered every drone of that class on the map, including a player's own.
     _x setVariable ["FPV_AI_Drones_managed", true, true];
 } forEach _drones;
 
+// The drone types this module controls. With "Control All Drones Of This Type" on
+// (the default, and how the mod originally behaved) every other drone of these
+// types is taken over too - including ones spawned later, e.g. in Zeus.
+private _droneTypes = _drones apply { typeOf _x };
+_droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
+
 [
+    _logic,
+    _center,
+    _pickupRadius,
+    _isDroneCandidate,
+    _droneTypes,
+    _takeOverAllOfType,
     _drones,
     _unitKinds,
     _targetSource,
@@ -148,6 +164,12 @@ if (_drones isEqualTo []) exitWith {
     _enableChat
 ] spawn {
     params [
+        "_logic",
+        "_center",
+        "_pickupRadius",
+        "_isDroneCandidate",
+        "_droneTypes",
+        "_takeOverAllOfType",
         "_drones",
         "_unitKinds",
         "_targetSource",
@@ -168,10 +190,44 @@ if (_drones isEqualTo []) exitWith {
     while {true} do {
         sleep 2;
 
+        // The module's area: pick up any drone placed within it that no module
+        // controls yet - so in Zeus you place the module once and then just put
+        // drones next to it. Stops once the module itself is deleted.
+        if (!isNull _logic) then {
+            {
+                if ((crew _x) isEqualTo []) then { createVehicleCrew _x; };
+                diag_log format ["FPV_AI_Drones: module %1 picked up %2 (%3) - placed in its %4m area",
+                    typeOf _logic, _x, typeOf _x, _pickupRadius];
+                _x setVariable ["FPV_AI_Drones_managed", true, true];
+                _drones pushBack _x;
+                _droneTypes pushBackUnique (typeOf _x);   // so "all of this type" covers it too
+            } forEach ((_center nearEntities [["Air", "LandVehicle"], _pickupRadius]) select {
+                ([_x] call _isDroneCandidate) && { !(_x getVariable ["FPV_AI_Drones_managed", false]) }
+            });
+        };
+
+        if (_takeOverAllOfType && { !isNull _logic }) then {
+            // Adopt crewed drones of our types that no module controls yet - e.g.
+            // ones a Zeus spawned after this module was placed. Crewed only, as
+            // the original type-based behaviour was: empty drones parked in a
+            // base are left alone unless a module is synced to them.
+            {
+                diag_log format ["FPV_AI_Drones: module %1 taking over %2 (%3) - same type, not yet controlled",
+                    typeOf _logic, _x, typeOf _x];
+                _x setVariable ["FPV_AI_Drones_managed", true, true];
+                _drones pushBack _x;
+            } forEach (allUnitsUAV select {
+                alive _x
+                && { (typeOf _x) in _droneTypes }
+                && { !(_x getVariable ["FPV_AI_Drones_managed", false]) }
+            });
+        };
+
         private _active = _drones select { !isNull _x && { alive _x } };
 
-        // Every managed drone is gone - nothing left for this module to do.
-        if (_active isEqualTo []) exitWith {};
+        // The module keeps watching its area (and its drone types) for as long as
+        // it exists; once it's deleted, stop when its last drone is gone.
+        if (_active isEqualTo [] && { isNull _logic }) exitWith {};
 
         {
             // fpvLogic guards re-entry with the drone's "initialized" variable,

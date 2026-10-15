@@ -54,12 +54,18 @@ failing silently.
 
 ## Setup — Zeus
 
-1. Spawn or find a drone.
-2. Open the Zeus module tree: **Modules → Effects → FPV AI Drones**.
-3. Either **drop the module directly onto the drone**, or place it on the ground within **100 m** of
-   one — it will adopt nearby drones.
-4. Optional: give the drone **waypoints**. While it has no target it flies them in order, and
+1. Open the Zeus module tree: **Modules → Effects → FPV AI Drones** (Anti-Tank for vehicles,
+   Anti-Personnel for infantry).
+2. Either **drop the module onto a drone**, or place it on the ground as a **drone station**:
+   every drone within **100 m** of it is picked up - including drones you place there later.
+   Place the module once, then just keep putting drones next to it.
+3. With **Control All Drones Of This Type** on (the default), the module also takes over every
+   other drone of the same type anywhere on the map, including ones spawned later.
+4. Optional: give a drone **waypoints**. While it has no target it flies them in order, and
    attacks anything it spots on the way.
+
+A drone is controlled by the first module that picks it up; placing a second module next to it
+doesn't change it. Use the module type you want (AT / AP) first.
 
 Works on dedicated servers: the module is placed on the Zeus player's machine and handed to the
 server, where all drone AI runs.

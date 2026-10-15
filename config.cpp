@@ -68,6 +68,12 @@ class CfgVehicles {
                 tooltip = "Show system chat notifications for drone events";
                 defaultValue = "false";
             };
+            class TakeOverAllOfType: Checkbox {
+                property = "FPV_AI_Drones_TakeOverAllOfType";
+                displayName = "Control All Drones Of This Type";
+                tooltip = "Also take over every other drone of the same type on the map, including ones spawned later (e.g. in Zeus). Turn off to control only the drones this module is synced to or placed on - leaves players' own drones alone.";
+                defaultValue = "true";
+            };
             class TargetSource: Combo {
                 property = "FPV_AI_Drones_TargetSource";
                 displayName = "Target Source";
@@ -179,6 +185,12 @@ class CfgVehicles {
                 tooltip = "Show system chat notifications for drone events";
                 defaultValue = "false";
             };
+            class TakeOverAllOfType: Checkbox {
+                property = "FPV_AI_Drones_TakeOverAllOfType";
+                displayName = "Control All Drones Of This Type";
+                tooltip = "Also take over every other drone of the same type on the map, including ones spawned later (e.g. in Zeus). Turn off to control only the drones this module is synced to or placed on - leaves players' own drones alone.";
+                defaultValue = "true";
+            };
             class TargetSource: Combo {
                 property = "FPV_AI_Drones_TargetSource";
                 displayName = "Target Source";
@@ -289,6 +301,12 @@ class CfgVehicles {
                 displayName = "Enable Chat Messages";
                 tooltip = "Show system chat notifications for drone events";
                 defaultValue = "false";
+            };
+            class TakeOverAllOfType: Checkbox {
+                property = "FPV_AI_Drones_TakeOverAllOfType";
+                displayName = "Control All Drones Of This Type";
+                tooltip = "Also take over every other drone of the same type on the map, including ones spawned later (e.g. in Zeus). Turn off to control only the drones this module is synced to or placed on - leaves players' own drones alone.";
+                defaultValue = "true";
             };
             class TargetSource: Combo {
                 property = "FPV_AI_Drones_TargetSource";

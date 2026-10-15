@@ -111,6 +111,23 @@ class Mission
 			};
 			id=3;
 			type="FPV_AI_Drones_AT_Module";
+			class CustomAttributes
+			{
+				class Attribute0
+				{
+					property="FPV_AI_Drones_TakeOverAllOfType";
+					expression="_this setVariable ['TakeOverAllOfType',_value,true];";
+					class Value
+					{
+						class data
+						{
+							singleType="BOOL";
+							value=0;
+						};
+					};
+				};
+				nAttributes=1;
+			};
 		};
 	};
 	class Connections

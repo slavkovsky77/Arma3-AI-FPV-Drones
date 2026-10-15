@@ -146,8 +146,13 @@ if (fileExists "testconfig.sqf") then { call compile preprocessFileLineNumbers "
 ["Waiting for the watching client to connect..."] call FPVT_fnc_show;
 // allPlayers is only populated in multiplayer; in singleplayer the player is just "player".
 FPVT_fnc_humans = { if (isMultiplayer) then { allPlayers - entities "HeadlessClient_F" } else { [player] select { !isNull _x } } };
-waitUntil { sleep 1; count (call FPVT_fnc_humans) > 0 };
-sleep 10;   // client loading screen + camera setup
+if (isMultiplayer) then {
+    waitUntil { sleep 1; count (call FPVT_fnc_humans) > 0 };
+    sleep 10;   // client loading screen + camera setup
+} else {
+    // SP: the player already exists. Waiting on it here hung after an in-game Restart.
+    sleep 3;
+};
 private _player = (call FPVT_fnc_humans) param [0, objNull];
 
 ["START", "INFO", format ["isDedicated=%1 moduleFn=%2 crocus=%3",
@@ -181,7 +186,7 @@ private _had = _edenModule getVariable ["HeightAdjustmentDelay", -1];
     format ["InitialSearchHeight=%1 AttackDistance=%2 HeightAdjustmentDelay=%3 (AT preset is 30/10/0.1)", _ish, _ad, _had]] call FPVT_fnc_check;
 
 _tank = [[2000, 2150, 0]] call FPVT_fnc_spawnTank;
-["Stage 1/8 - Eden: empty Crocus synced to the Anti-Tank module", _drone, _tank] call FPVT_fnc_show;
+["Stage 1/9 - Eden: empty Crocus synced to the Anti-Tank module", _drone, _tank] call FPVT_fnc_show;
 _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
 ["1d drone destroyed the tank", [_tank] call FPVT_fnc_vehicleDone,
     format ["tank alive=%1 damage=%2 crewAlive=%3 timedOut=%4", alive _tank, damage _tank toFixed 2, {alive _x} count crew _tank, _timedOut]] call FPVT_fnc_check;
@@ -196,7 +201,7 @@ private _squad = [[3000, 2150, 0], 4] call FPVT_fnc_spawnSquad;
 _logic = [[3008, 2000, 0], FPVT_AP] call FPVT_fnc_module;
 [_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
 
-["Stage 2/8 - Anti-Personnel drone vs a 4-man squad", _drone, _squad select 0] call FPVT_fnc_show;
+["Stage 2/9 - Anti-Personnel drone vs a 4-man squad", _drone, _squad select 0] call FPVT_fnc_show;
 _timedOut = [_drone, _squad, { params ["_units"]; ({alive _x} count _units) == 0 }] call FPVT_fnc_await;
 private _killed = {!alive _x} count _squad;
 ["2a AP drone killed infantry", _killed > 0,
@@ -227,12 +232,12 @@ private _watch = [_decoy] spawn {
 };
 
 [_logic, [], true] call FPV_AI_Drones_fnc_initModule;
-["Stage 3/8 - Zeus-style: module attached to the drone, nothing synced", _drone, _tank] call FPVT_fnc_show;
+["Stage 3/9 - Zeus-style: module attached to the drone, nothing synced", _drone, _tank] call FPVT_fnc_show;
 _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
 terminate _watch;
 ["3a attached module destroyed the tank", [_tank] call FPVT_fnc_vehicleDone,
     format ["tank alive=%1 damage=%2 crewAlive=%3 timedOut=%4", alive _tank, damage _tank toFixed 2, {alive _x} count crew _tank, _timedOut]] call FPVT_fnc_check;
-["3b same-class drone left alone", !FPVT_decoyTouched,
+["3b same-class drone left alone (option off)", !FPVT_decoyTouched,
     "a crewed B_Crocus_AT 300m away must not be taken over by the module"] call FPVT_fnc_check;
 
 };
@@ -245,7 +250,7 @@ _logic = [[5040, 2000, 0], FPVT_AT] call FPVT_fnc_module;
 [_logic, [], true] call FPV_AI_Drones_fnc_initModule;
 
 ["4a ground-placed module adopted the drone 40m away", _drone getVariable ["FPV_AI_Drones_managed", false], ""] call FPVT_fnc_check;
-["Stage 4/8 - Zeus-style: module placed on the ground 40m from the drone", _drone, _tank] call FPVT_fnc_show;
+["Stage 4/9 - Zeus-style: module placed on the ground 40m from the drone", _drone, _tank] call FPVT_fnc_show;
 _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
 ["4b adopted drone destroyed the tank", [_tank] call FPVT_fnc_vehicleDone,
     format ["tank alive=%1 damage=%2 crewAlive=%3 timedOut=%4", alive _tank, damage _tank toFixed 2, {alive _x} count crew _tank, _timedOut]] call FPVT_fnc_check;
@@ -253,15 +258,33 @@ _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
 };
 
 if (FPVT_startStage <= 5) then {
-// --- Stage 5: module with no drone anywhere near ----------------------------
+// --- Stage 5: module placed FIRST, drone added near it afterwards ----------
+// The Zeus "drone station" workflow: place the module once, then put drones next
+// to it. Previously a module that found no drone gave up for good.
 private _managedBefore = count (vehicles select { _x getVariable ["FPV_AI_Drones_managed", false] });
 _logic = [[6000, 2000, 0], FPVT_AT] call FPVT_fnc_module;
-["Stage 5/8 - module with no drone nearby: should warn in chat and do nothing", objNull, _logic] call FPVT_fnc_show;
+["Stage 5/9 - module placed with no drone: should say it's waiting, and take nothing", objNull, _logic] call FPVT_fnc_show;
 [_logic, [], true] call FPV_AI_Drones_fnc_initModule;
 sleep 6;
 private _managedAfter = count (vehicles select { _x getVariable ["FPV_AI_Drones_managed", false] });
-["5a lonely module did nothing", _managedAfter == _managedBefore,
-    format ["managed drones before=%1 after=%2 (the warning itself shows in chat)", _managedBefore, _managedAfter]] call FPVT_fnc_check;
+["5a lonely module took nothing", _managedAfter == _managedBefore,
+    format ["managed drones before=%1 after=%2 (the waiting message shows in chat)", _managedBefore, _managedAfter]] call FPVT_fnc_check;
+
+// Now a drone is put down inside its area, crewed as Zeus would place it.
+_drone = [[6040, 2000, 0], "B_Crocus_AT", true] call FPVT_fnc_spawnDrone;
+_tank = [[6040, 2150, 0]] call FPVT_fnc_spawnTank;
+["Stage 5/9 - drone placed next to the waiting module afterwards: must be picked up", _drone, _tank] call FPVT_fnc_show;
+private _pickupDeadline5 = time + 10;
+waitUntil { sleep 0.5; (_drone getVariable ["FPV_AI_Drones_managed", false]) || { time > _pickupDeadline5 } };
+private _picked = _drone getVariable ["FPV_AI_Drones_managed", false];
+["5b drone placed later in the module's area picked up", _picked, format ["managed=%1 within 10s", _picked]] call FPVT_fnc_check;
+if (_picked) then {
+    _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
+    ["5c picked-up drone killed the tank", [_tank] call FPVT_fnc_vehicleDone,
+        format ["tank alive=%1 damage=%2 crewAlive=%3 timedOut=%4", alive _tank, damage _tank toFixed 2, {alive _x} count crew _tank, _timedOut]] call FPVT_fnc_check;
+} else {
+    ["5c picked-up drone killed the tank", false, "skipped - the drone was never picked up"] call FPVT_fnc_check;
+};
 
 };
 
@@ -285,8 +308,8 @@ if (FPVT_startStage <= 6) then {
         _reached, round (_drone distance2D _wpPos), round ((getPosATL _drone) select 2), alive _drone]] call FPVT_fnc_report;
     sleep 2;
 } forEach [
-    ["6a plain drone on the ground + waypoint", 1500, false, "Stage 6/8 - plain drone ON THE GROUND, no module, given a waypoint"],
-    ["6b plain drone already flying + waypoint", 2500, true, "Stage 6/8 - plain drone ALREADY FLYING, no module, given a waypoint"]
+    ["6a plain drone on the ground + waypoint", 1500, false, "Stage 6/9 - plain drone ON THE GROUND, no module, given a waypoint"],
+    ["6b plain drone already flying + waypoint", 2500, true, "Stage 6/9 - plain drone ALREADY FLYING, no module, given a waypoint"]
 ];
 
 };
@@ -303,7 +326,7 @@ _logic = [getPosATL _drone, FPVT_AT] call FPVT_fnc_module;
 private _grp7 = group _drone;
 _grp7 addWaypoint [_wpPos, 0];
 _grp7 setCurrentWaypoint [_grp7, (count waypoints _grp7) - 1];   // as Zeus does
-["Stage 7/8 - managed drone sent by waypoint toward a tank that starts out of range", _drone, _tank] call FPVT_fnc_show;
+["Stage 7/9 - managed drone sent by waypoint toward a tank that starts out of range", _drone, _tank] call FPVT_fnc_show;
 // Flight trace: shows whether the drone takes off, which waypoint the group is on,
 // and whether it is moving at all - the "it just sits there" question.
 private _trace = [_drone, _grp7] spawn {
@@ -333,7 +356,7 @@ if (FPVT_startStage <= 8) then {
 // curator's client and its init runs there, not on the server.
 _drone = [[4000, 4000, 0], "B_Crocus_AT", true] call FPVT_fnc_spawnDrone;
 _tank = [[4000, 4150, 0]] call FPVT_fnc_spawnTank;
-["Stage 8/8 - real AT module created on YOUR machine and attached to the drone, like Zeus", _drone, _tank] call FPVT_fnc_show;
+["Stage 8/9 - real AT module created on YOUR machine and attached to the drone, like Zeus", _drone, _tank] call FPVT_fnc_show;
 [[_drone], {
     params ["_d"];
     private _m = (createGroup sideLogic) createUnit ["FPV_AI_Drones_AT_Module", getPosATL _d, [], 0, "CAN_COLLIDE"];
@@ -359,10 +382,43 @@ if (_managed) then {
 
 };
 
+if (FPVT_startStage <= 9) then {
+// --- Stage 9: "Control All Drones Of This Type" ----------------------------
+// A drone spawned AFTER the module, never synced or placed on, must be taken
+// over because it is the same type - how the mod originally behaved, and how
+// Zeus users expect it to work: place one module, then keep spawning drones.
+// Independent drones: a type no other stage uses, so no other module can claim it.
+_drone = [[5000, 4000, 0], "I_Crocus_AT", true] call FPVT_fnc_spawnDrone;
+_logic = [getPosATL _drone, FPVT_AT + [["TakeOverAllOfType", true]]] call FPVT_fnc_module;
+[_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
+sleep 3;
+private _late = [[6000, 4000, 0], "I_Crocus_AT", true] call FPVT_fnc_spawnDrone;   // 1km away, not synced
+_tank = [[6000, 4150, 0]] call FPVT_fnc_spawnTank;
+["Stage 9/9 - same-type drone spawned AFTER the module, never synced: must be taken over", _late, _tank] call FPVT_fnc_show;
+
+private _adoptDeadline = time + 10;
+waitUntil { sleep 0.5; (_late getVariable ["FPV_AI_Drones_managed", false]) || { time > _adoptDeadline } };
+private _adopted = _late getVariable ["FPV_AI_Drones_managed", false];
+["9a later same-type drone taken over", _adopted, format ["managed=%1 within 10s", _adopted]] call FPVT_fnc_check;
+if (_adopted) then {
+    _timedOut = [_late, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
+    ["9b taken-over drone killed the tank", [_tank] call FPVT_fnc_vehicleDone,
+        format ["tank alive=%1 damage=%2 crewAlive=%3 timedOut=%4", alive _tank, damage _tank toFixed 2, {alive _x} count crew _tank, _timedOut]] call FPVT_fnc_check;
+} else {
+    ["9b taken-over drone killed the tank", false, "skipped - the drone was never taken over"] call FPVT_fnc_check;
+};
+};
+
 // --- Summary + hand over Zeus for manual poking -----------------------------
 private _passed = { (_x select 1) == "PASS" } count FPVT_results;
 diag_log text format ["FPV_TEST|SUMMARY|%1/%2", _passed, count FPVT_results];
 
+if (!isMultiplayer) then {
+    // SP: hand Zeus to whoever "player" is now (it can be briefly null right after a restart).
+    private _until = time + 30;
+    waitUntil { sleep 0.5; !isNull player || { time > _until } };
+    _player = player;
+};
 if (!isNull _player) then {
     private _curator = (createGroup sideLogic) createUnit ["ModuleCurator_F", [0, 0, 0], [], 0, "NONE"];
     sleep 1;

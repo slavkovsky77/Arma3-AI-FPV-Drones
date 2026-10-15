@@ -18,8 +18,10 @@
 param(
     [ValidateSet("Both", "MP", "SP")] [string]$Mode = "Both",
     [switch]$NoBuild,
-    [ValidateRange(1, 8)] [int]$StartStage = 1,   # skip stages that already pass
+    [ValidateRange(1, 10)] [int]$StartStage = 1,   # skip stages that already pass; 10 = skip all (straight to Zeus)
     [switch]$KeepOpen,
+    [switch]$Fullscreen,   # for hands-on sessions (Zeus needs the mouse captured); default is windowed
+    [switch]$ServerOnly,   # MP: start just the server; join it yourself from the normal Arma launcher
     [int]$TimeoutMinutes = 20,
     [string]$ProfileName = "vulcan420",
     [string]$ArmaDir = "E:\SteamLibrary\steamapps\common\Arma 3"
@@ -53,7 +55,8 @@ function Stop-Game {
 function Start-Game([string[]]$ExtraArgs) {
     # -window: a fullscreen game that starts behind another window (the server console
     # in MP) tends to hang when you switch to it. Windowed avoids that; maximize at will.
-    $argList = @("`"-name=$ProfileName`"", "`"-mod=$Mods`"", "-window", "-skipIntro", "-noSplash", "-world=empty", "-showScriptErrors") + $ExtraArgs
+    $argList = @("`"-name=$ProfileName`"", "`"-mod=$Mods`"", "-skipIntro", "-noSplash", "-world=empty", "-showScriptErrors") + $ExtraArgs
+    if (-not $Fullscreen) { $argList += "-window" }
     Start-Process -FilePath (Join-Path $ArmaDir "arma3_x64.exe") -WorkingDirectory $ArmaDir -ArgumentList $argList | Out-Null
 }
 
@@ -141,7 +144,8 @@ class Missions
 "@ | Set-Content -Encoding ASCII $serverCfg
 
     $since = Get-Date
-    Start-Process -FilePath (Join-Path $ArmaDir "arma3server_x64.exe") -WorkingDirectory $ArmaDir -ArgumentList @(
+    # Minimized: the console taking focus is what left the fullscreen game hanging.
+    Start-Process -FilePath (Join-Path $ArmaDir "arma3server_x64.exe") -WorkingDirectory $ArmaDir -WindowStyle Minimized -ArgumentList @(
         "-port=$Port", "`"-config=$serverCfg`"", "`"-profiles=$WorkDir`"", "-name=fpvtest", "`"-mod=$Mods`"", "-autoInit"
     ) | Out-Null
 
@@ -153,6 +157,15 @@ class Missions
     }
     Start-Sleep -Seconds 5   # port opens slightly before the mission is ready
 
+    if ($ServerOnly) {
+        # Hands-on MP: the player joins from the normal Arma launcher, like real users do.
+        Write-Host ""
+        Write-Host "Server is up (console minimized on the taskbar). Join it from the Arma 3 Launcher:" -ForegroundColor Green
+        Write-Host "  1. Mods: enable CBA_A3, plus the local mods x\FPV Drone Crocus With Settings and x\FPV_AI_Drones"
+        Write-Host "  2. Play, then Multiplayer > Direct Connect: 127.0.0.1  port $Port  password $Password"
+        Write-Host "  3. You get Zeus ~10s after joining - press Y"
+        return @{ Passed = 0; Total = 0 }
+    }
     Start-Game @("-connect=127.0.0.1", "-port=$Port", "-password=$Password")
     $result = Watch-Run "MP" {
         Get-ChildItem $WorkDir -Filter *.rpt -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -175,7 +188,13 @@ class Missions
 }
 
 # --- main ---------------------------------------------------------------------
-if (Get-Process -Name arma3_x64 -ErrorAction SilentlyContinue) { throw "Arma 3 is already running. Close it first." }
+if ($ServerOnly) {
+    # A hands-on session: multiplayer, server stays up, straight to Zeus unless told otherwise.
+    $Mode = "MP"
+    $KeepOpen = $true
+    if (-not $PSBoundParameters.ContainsKey('StartStage')) { $StartStage = 10 }
+}
+if (-not $ServerOnly -and (Get-Process -Name arma3_x64 -ErrorAction SilentlyContinue)) { throw "Arma 3 is already running. Close it first." }
 Stop-TestServer
 if (Get-Process -Name arma3server_x64 -ErrorAction SilentlyContinue) { throw "An Arma 3 server that isn't a test server is running. Stop it first." }
 
@@ -184,7 +203,9 @@ if (-not $NoBuild) {
     & (Join-Path $RepoDir "build.ps1") | Out-Null
 }
 
-$modes = if ($Mode -eq "Both") { @("SP", "MP") } else { @($Mode) }
+# @(...) around the whole if: PowerShell unrolls a one-element array returned from an
+# if-expression into a plain string, and $modes[-1] would then be its last CHARACTER.
+$modes = @(if ($Mode -eq "Both") { "SP", "MP" } else { $Mode })
 $results = [ordered]@{}
 foreach ($m in $modes) {
     $results[$m] = if ($m -eq "SP") { Invoke-SpRun } else { Invoke-MpRun }
