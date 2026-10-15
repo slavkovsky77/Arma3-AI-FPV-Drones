@@ -62,6 +62,19 @@ class CfgVehicles {
                 tooltip = "Array of unit types to target (e.g., LandVehicle,Car,Tank)";
                 defaultValue = """LandVehicle,Car,Tank""";
             };
+            class TargetSides: Combo {
+                property = "FPV_AI_Drones_TargetSides";
+                displayName = "Target Sides";
+                tooltip = "Who the drones attack. 'Mission's enemies' follows the mission's side relations for the drone's own side. The other options attack that side whatever the relations say. Civilians are never targets.";
+                defaultValue = """ENEMIES""";
+                class Values {
+                    class Enemies { name = "Mission's enemies"; value = "ENEMIES"; };
+                    class East    { name = "OPFOR only"; value = "EAST"; };
+                    class West    { name = "BLUFOR only"; value = "WEST"; };
+                    class Guer    { name = "Independent only"; value = "GUER"; };
+                    class NotOwn  { name = "Everyone except own side"; value = "NOTOWN"; };
+                };
+            };
             class EnableChatMessages: Checkbox {
                 property = "FPV_AI_Drones_EnableChatMessages";
                 displayName = "Enable Chat Messages";
@@ -181,6 +194,19 @@ class CfgVehicles {
                 tooltip = "Array of unit types to target";
                 defaultValue = """LandVehicle,Car,Tank""";
             };
+            class TargetSides: Combo {
+                property = "FPV_AI_Drones_TargetSides";
+                displayName = "Target Sides";
+                tooltip = "Who the drones attack. 'Mission's enemies' follows the mission's side relations for the drone's own side. The other options attack that side whatever the relations say. Civilians are never targets.";
+                defaultValue = """ENEMIES""";
+                class Values {
+                    class Enemies { name = "Mission's enemies"; value = "ENEMIES"; };
+                    class East    { name = "OPFOR only"; value = "EAST"; };
+                    class West    { name = "BLUFOR only"; value = "WEST"; };
+                    class Guer    { name = "Independent only"; value = "GUER"; };
+                    class NotOwn  { name = "Everyone except own side"; value = "NOTOWN"; };
+                };
+            };
             class EnableChatMessages: Checkbox {
                 property = "FPV_AI_Drones_EnableChatMessages";
                 displayName = "Enable Chat Messages";
@@ -298,6 +324,19 @@ class CfgVehicles {
                 displayName = "Target Unit Types";
                 tooltip = "Array of unit types to target";
                 defaultValue = """Man""";
+            };
+            class TargetSides: Combo {
+                property = "FPV_AI_Drones_TargetSides";
+                displayName = "Target Sides";
+                tooltip = "Who the drones attack. 'Mission's enemies' follows the mission's side relations for the drone's own side. The other options attack that side whatever the relations say. Civilians are never targets.";
+                defaultValue = """ENEMIES""";
+                class Values {
+                    class Enemies { name = "Mission's enemies"; value = "ENEMIES"; };
+                    class East    { name = "OPFOR only"; value = "EAST"; };
+                    class West    { name = "BLUFOR only"; value = "WEST"; };
+                    class Guer    { name = "Independent only"; value = "GUER"; };
+                    class NotOwn  { name = "Everyone except own side"; value = "NOTOWN"; };
+                };
             };
             class EnableChatMessages: Checkbox {
                 property = "FPV_AI_Drones_EnableChatMessages";

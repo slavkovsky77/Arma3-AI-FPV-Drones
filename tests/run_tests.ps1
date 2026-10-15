@@ -18,7 +18,7 @@
 param(
     [ValidateSet("Both", "MP", "SP")] [string]$Mode = "Both",
     [switch]$NoBuild,
-    [ValidateRange(1, 10)] [int]$StartStage = 1,   # skip stages that already pass; 10 = skip all (straight to Zeus)
+    [ValidateRange(1, 99)] [int]$StartStage = 1,   # skip stages that already pass; 99 = skip all (straight to Zeus)
     [switch]$KeepOpen,
     [switch]$Fullscreen,   # for hands-on sessions (Zeus needs the mouse captured); default is windowed
     [switch]$ServerOnly,   # MP: start just the server; join it yourself from the normal Arma launcher
@@ -200,7 +200,7 @@ if ($Manual) {
     # the player's own display mode, and everything left running for them.
     if (-not $PSBoundParameters.ContainsKey('Mode')) { $Mode = "MP" }
     if ($Mode -eq "Both") { throw "-Manual takes -Mode SP or -Mode MP, not Both." }
-    $StartStage = 10
+    $StartStage = 99
     $KeepOpen = $true
     $Fullscreen = $true
 }
@@ -208,7 +208,7 @@ if ($ServerOnly) {
     # A hands-on session: multiplayer, server stays up, straight to Zeus unless told otherwise.
     $Mode = "MP"
     $KeepOpen = $true
-    if (-not $PSBoundParameters.ContainsKey('StartStage')) { $StartStage = 10 }
+    if (-not $PSBoundParameters.ContainsKey('StartStage')) { $StartStage = 99 }
 }
 if (-not $ServerOnly -and (Get-Process -Name arma3_x64 -ErrorAction SilentlyContinue)) { throw "Arma 3 is already running. Close it first." }
 Stop-TestServer
@@ -240,6 +240,18 @@ foreach ($m in $results.Keys) {
     if ($r) {
         $ok = $r.Passed -eq $r.Total
         Write-Host ("RESULT {0}: {1}/{2} checks passed" -f $m, $r.Passed, $r.Total) -ForegroundColor ($(if ($ok) { "Green" } else { "Red" }))
+        # Time-to-kill per attack, from the harness's "ttk" lines (seconds from the drone
+        # being sent until its target was finished, takeoff included).
+        if ($r.Rpt -and (Test-Path $r.Rpt)) {
+            $ttk = @(Get-Content $r.Rpt -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_ -match 'FPV_TEST\|ttk\|INFO\|([\d.]+)s\s+(.*)$') { [pscustomobject]@{ Seconds = [double]$Matches[1]; Stage = $Matches[2].Trim() } }
+            })
+            if ($ttk.Count) {
+                Write-Host ("  time-to-kill ({0} kills): average {1:N1}s, fastest {2:N1}s, slowest {3:N1}s" -f $ttk.Count,
+                    ($ttk | Measure-Object Seconds -Average).Average, ($ttk | Measure-Object Seconds -Minimum).Minimum, ($ttk | Measure-Object Seconds -Maximum).Maximum) -ForegroundColor Cyan
+                $ttk | ForEach-Object { Write-Host ("    {0,6:N1}s  {1}" -f $_.Seconds, $_.Stage) }
+            }
+        }
     } else {
         $ok = $false
         Write-Host "RESULT ${m}: no summary - see the log above" -ForegroundColor Red

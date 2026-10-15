@@ -101,6 +101,7 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 |---|---|---|---|
 | Target Unit Types | `LandVehicle,Car,Tank` | `Man` | Comma-separated `isKindOf` classes |
 | Target Source | `vehicles` | `allUnits` | Which pool to scan. Use `allUnits` for infantry |
+| Target Sides | Mission's enemies | Mission's enemies | Who to attack: the mission's side relations (default), one side only (OPFOR / BLUFOR / Independent), or everyone except its own side. Civilians are never targets |
 | Enable Chat Messages | off | off | Drone init/debug messages in system chat |
 | Initial Search Height | 30 | 50 | Cruise height while hunting (m) |
 | Target Detection Range | 200 | 200 | Acquisition range, and the range at which a target is dropped |
@@ -110,7 +111,7 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 
-Targeting uses `BIS_fnc_sideIsEnemy`, so it respects the mission's actual side relations —
+With the default "Mission's enemies", targeting uses `BIS_fnc_sideIsEnemy`, so it respects the mission's actual side relations —
 independent/resistance works, not just BLUFOR vs OPFOR.
 
 ---
@@ -138,7 +139,8 @@ if (isServer) then {
         0.1,                        // stuck threshold
         5,                          // move adjustment delay
         50,                         // initial search height
-        false                       // enable chat
+        false,                      // enable chat
+        "ENEMIES"                   // target sides: ENEMIES | EAST | WEST | GUER | NOTOWN (optional)
     ] spawn FPV_AI_Drones_fnc_fpvLogic;
 };
 ```

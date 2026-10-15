@@ -67,6 +67,7 @@ private _enableChat = ["EnableChatMessages", false] call _setting;
 // Fallback false: only a placed module (config default true) takes over by type;
 // a plain logic handed to this function by a script gets exactly what it asks for.
 private _takeOverAllOfType = ["TakeOverAllOfType", false] call _setting;
+private _targetSides = ["TargetSides", "ENEMIES"] call _setting;   // who to attack - see fpvLogic _isHostile
 
 // The module's area: drones within this distance of where it was placed are
 // picked up - at placement, and any placed there later (a Zeus "drone station").
@@ -183,7 +184,8 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
     _stuckThreshold,
     _moveAdjustmentDelay,
     _initialSearchHeight,
-    _enableChat
+    _enableChat,
+    _targetSides
 ] spawn {
     params [
         "_logic",
@@ -207,7 +209,8 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
         "_stuckThreshold",
         "_moveAdjustmentDelay",
         "_initialSearchHeight",
-        "_enableChat"
+        "_enableChat",
+        "_targetSides"
     ];
 
     while {true} do {
@@ -273,7 +276,8 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 _stuckThreshold,
                 _moveAdjustmentDelay,
                 _initialSearchHeight,
-                _enableChat
+                _enableChat,
+                _targetSides
             ] spawn FPV_AI_Drones_fnc_fpvLogic;
         } forEach _active;
     };

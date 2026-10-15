@@ -21,7 +21,8 @@ params [
     "_stuckThreshold",
     "_moveAdjustmentDelay",
     "_initialSearchHeight",
-    "_enableChat"
+    "_enableChat",
+    ["_targetSides", "ENEMIES"]   // ENEMIES | EAST | WEST | GUER | NOTOWN - see _isHostile
 ];
 
 // Movement commands only take effect where the drone is local. Bail out rather
@@ -48,9 +49,25 @@ private _is_dead = {
     (isNull _object) || !(alive _object)
 };
 
+// Whether _other is a target under the module's "Target Sides" setting.
+//   ENEMIES - whatever the mission's side relations call hostile to the drone (default, as in v1.1)
+//   EAST / WEST / GUER - that side only, regardless of relations
+//   NOTOWN  - every combat side except the drone's own; civilians never
+private _isHostile = {
+    params ["_uav", "_other", "_mode"];
+    private _s = side _other;
+    switch (_mode) do {
+        case "EAST": { _s == east };
+        case "WEST": { _s == west };
+        case "GUER": { _s == resistance };
+        case "NOTOWN": { _s != side _uav && { _s in [east, west, resistance] } };
+        default { [side _uav, _s] call BIS_fnc_sideIsEnemy };
+    }
+};
+
 // Function to find the nearest enemy of a specific type
 private _findNearestEnemyOfType = {
-    params ["_uav", "_kinds", "_source", "_objectParentAllowed", "_detectionRange"];
+    params ["_uav", "_kinds", "_source", "_objectParentAllowed", "_detectionRange", ["_sides", "ENEMIES"]];
 
     // A missing default here left _targets undefined and threw on the select below.
     private _targets = switch (_source) do {
@@ -60,7 +77,7 @@ private _findNearestEnemyOfType = {
     };
 
     private _enemies = _targets select {
-        ([side _uav, side _x] call BIS_fnc_sideIsEnemy) && { [_x, _kinds] call _isUnitOfKind }
+        ([_uav, _x, _sides] call _isHostile) && { [_x, _kinds] call _isUnitOfKind }
     };
 
     private _nearestEnemy = objNull;
@@ -102,8 +119,22 @@ _uavInstance setSkill 1;
 _uavInstance enableAI "ALL";
 _uavInstance setSpeedMode "FULL";
 _uavInstance setVariable ["initialized", true];
-_uavInstance flyInHeight _initialSearchHeight;
-_uavInstance forceSpeed 150;
+
+// Heights use the forced form (Arma 2.14+). With the plain form a landed drone
+// waits for a waypoint before it climbs, and any height under 10 m is a LANDING
+// order - the attack height is 5-8 m, so drones slowed down and hovered over
+// their target instead of hitting it.
+_uavInstance flyInHeight [_initialSearchHeight, true];
+_uavInstance forceSpeed 150;   // m/s - effectively no cap; speed comes from the AI and the dive
+
+// Leave the flying to this script. The drone's own UAV AI scans for enemies and
+// re-plans its path when it sees one (it also drops its waypoints then), and the
+// Crocus carries a turret - it was competing with our move orders.
+(group _uavInstance) setCombatMode "BLUE";
+{
+    _x disableAI "AUTOTARGET";
+    _x disableAI "TARGET";
+} forEach crew _uavInstance;
 _uavInstance setVariable ["jac_bonusStealth", 1.0];
 // Always logged, so a user's RPT shows whether the drone was picked up at all.
 // clientOwner identifies the machine: it should only ever be the server's (2).
@@ -128,7 +159,7 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 	if ([_uavInstance] call _is_dead) then {
 		break;
 	};
-	_nearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange] call _findNearestEnemyOfType;
+	_nearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange, _targetSides] call _findNearestEnemyOfType;
 
 	// No target yet: fly the group's waypoints (e.g. ones set in Zeus) while
 	// searching, steering the drone explicitly. Nothing here runs once a target
@@ -178,6 +209,9 @@ if (isNull _nearestEnemy) exitWith {
 };
 
 private _target = _nearestEnemy;
+// Start of the attack run, for the time-to-kill in the detonation log line.
+private _acquiredAt = diag_tickTime;
+diag_log format ["FPV_AI_Drones: drone %1 acquired %2 (%3) at %4m", _uavInstance, _target, typeOf _target, round (_uavInstance distance _target)];
 private _currentDistance2d = _uavInstance distance2D _target;
 private _currentDistance = (getPosASL _uavInstance) vectorDistance (getPosASL _target);
 
@@ -228,7 +262,7 @@ private _handleStuckPos = {
     // Force immediate stop, then move to new position
     _uav forceSpeed 0;
     sleep 2;
-    _uav flyInHeight _currentHeight + (_randomOffset select 2);
+    _uav flyInHeight [(_currentHeight + (_randomOffset select 2)) max 15, true];
     _uav move _newPos;
     _uav forceSpeed 150;
     sleep 5;
@@ -290,7 +324,7 @@ while {(_predictedDistance > _attackDistance * 1.5) && { _currentDistance2d > _a
 		if (_canChangeHeight) then {
 			_lastSetHeight = _desiredHeight;
 			_lastSetHeightTime = _currentTime;
-			_uavInstance flyInHeight _lastSetHeight;
+			_uavInstance flyInHeight [_lastSetHeight, true];
 			private _sleepTime = ((_currentHeight / _desiredHeight) * _heightAdjustmentDelay) max 0.1;
 			sleep _sleepTime;
 		};
@@ -363,7 +397,7 @@ while {(_predictedDistance > _attackDistance * 1.5) && { _currentDistance2d > _a
 	// occasionally look for new enemy
 	private _lastLookForNewEnemyFreq = 4;
 	if (_currentTime > _lastLookForNewEnemyTime + _lastLookForNewEnemyFreq) then {
-		private _newNearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange] call _findNearestEnemyOfType;
+		private _newNearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange, _targetSides] call _findNearestEnemyOfType;
 		if (!(isNull _newNearestEnemy) && (_newNearestEnemy != _target)) then {
 			_target = _newNearestEnemy;
 		};
@@ -420,9 +454,9 @@ if (_uavCanHitTarget) then {
 
 	// One line per detonation per machine. More than one for the same drone
 	// means the explosives are being duplicated across machines again.
-	diag_log format ["FPV_AI_Drones: drone %1 detonating %2 on %3 at %4m%5 on machine %6",
+	diag_log format ["FPV_AI_Drones: drone %1 detonating %2 on %3 at %4m%5 on machine %6, %7s after acquiring the target",
 		_uavInstance, _ammoTypes, _target, round (_blastPos distance _target),
-		["", " (drone impacted first)"] select _droneGone, clientOwner];
+		["", " (drone impacted first)"] select _droneGone, clientOwner, round (diag_tickTime - _acquiredAt)];
 	private _explosives = [];
 
 	{
