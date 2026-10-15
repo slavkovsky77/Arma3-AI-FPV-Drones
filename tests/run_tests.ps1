@@ -45,7 +45,13 @@ function Stop-TestServer {
     # but only servers running from our test profile directory.
     Get-CimInstance Win32_Process -Filter "Name = 'arma3server_x64.exe'" |
         Where-Object { $_.CommandLine -like "*fpv_ai_drones_test*" } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Host "Stopped test server (pid $($_.ProcessId))." }
+        ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force
+            # Stop-Process returns before the process is gone; a back-to-back run then saw
+            # it still alive and refused to start ("a server that isn't a test server").
+            Wait-Process -Id $_.ProcessId -Timeout 30 -ErrorAction SilentlyContinue
+            Write-Host "Stopped test server (pid $($_.ProcessId))."
+        }
 }
 
 function Stop-Game {
