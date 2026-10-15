@@ -3,6 +3,26 @@ AI-controlled FPV kamikaze drones. Give a drone this module and it takes off, hu
 
 Works in the [b]Eden editor[/b] and in [b]Zeus[/b], in singleplayer and on [b]dedicated servers[/b].
 
+[h2]What's new in 1.1.0[/h2]
+[b]You asked for it:[/b]
+[list]
+[*][b]Zeus support[/b] - place the module in Zeus, use drone stations, works on dedicated servers too
+[*][b]Signed for servers[/b] - a .bikey is included, so servers with signature checks can run it
+[*][b]No more chat spam[/b] - drone messages are now off by default
+[*][b]Example scenarios[/b] - Play > Showcases shows exactly how to set it up
+[/list]
+[b]Fixed:[/b]
+[list]
+[*]Drones placed in the editor without a crew just sat there - they now get a crew and go
+[*]Anti-Personnel drones circled infantry without attacking - their presets weren't applied; they now hunt infantry
+[*]Drones exploded above their target or crashed short and killed nothing - they now steer into the target and detonate on impact
+[*]Drones broke off their attack while still taking off
+[*]In multiplayer the explosion happened once per player - now once, on the server
+[*]Zeus waypoints were ignored - drones with a module now fly their waypoints
+[*]Only BLUFOR vs OPFOR worked - drones now use the mission's real side relations (Independent works)
+[/list]
+Full list: [url=https://steamcommunity.com/sharedfiles/filedetails/changelog/3380337397]Change Notes[/url]
+
 [h2]Features[/h2]
 [list]
 [*][b]Anti-Tank[/b] and [b]Anti-Personnel[/b] modules - vehicles or infantry, each with sensible presets
