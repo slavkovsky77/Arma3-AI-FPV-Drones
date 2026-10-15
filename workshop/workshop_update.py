@@ -12,7 +12,12 @@ ITEM_ID = 3380337397       # FPV AI Drones
 CB_SUBMIT_ITEM_UPDATE = 3404   # k_iSteamUGCCallbacks (3400) + 4 -> SubmitItemUpdateResult_t
 
 dll_src, desc_file, images = sys.argv[1], sys.argv[2], sys.argv[3:]
-work = os.path.dirname(os.path.abspath(__file__))
+desc_file = os.path.abspath(desc_file)
+images = [os.path.abspath(i) for i in images]
+# Steam needs steam_api64.dll + steam_appid.txt in the working directory; keep them
+# in a throwaway folder, never next to this script (it lives in the repo).
+import tempfile
+work = tempfile.mkdtemp(prefix="fpv_workshop_")
 shutil.copy(dll_src, os.path.join(work, "steam_api64.dll"))
 with open(os.path.join(work, "steam_appid.txt"), "w") as f:
     f.write(str(APP_ID))
