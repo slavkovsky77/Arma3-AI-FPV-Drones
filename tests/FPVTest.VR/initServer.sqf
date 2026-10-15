@@ -143,9 +143,11 @@ FPVT_AP = [
     ["MoveAdjustmentDelay", 5], ["EnableChatMessages", true]
 ];
 
-// Which stage to start from - testsun_tests.ps1 -StartStage writes this file.
+// Which stage to start from - tests\run_tests.ps1 -StartStage writes this file.
 FPVT_startStage = 1;
+FPVT_stages = [];   // non-empty: run exactly these stages (run_tests.ps1 -Stages / -Quick)
 if (fileExists "testconfig.sqf") then { call compile preprocessFileLineNumbers "testconfig.sqf"; };
+FPVT_fnc_runStage = { params ["_n"]; if (FPVT_stages isEqualTo []) then { _n >= FPVT_startStage } else { _n in FPVT_stages } };
 
 // ---------------------------------------------------------------------------
 
@@ -172,7 +174,7 @@ if (isNil "FPV_AI_Drones_fnc_initModule") exitWith {
 
 private ["_drone", "_tank", "_logic", "_timedOut"];
 
-if (FPVT_startStage <= 1) then {
+if ([1] call FPVT_fnc_runStage) then {
 // --- Stage 1: the real Eden path -------------------------------------------
 // The mission.sqm places an EMPTY Crocus synced to an untouched AT module.
 // That module ran at mission start, before anyone connected; the drone has
@@ -199,7 +201,7 @@ _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
 
 };
 
-if (FPVT_startStage <= 2) then {
+if ([2] call FPVT_fnc_runStage) then {
 // --- Stage 2: Anti-Personnel vs infantry -----------------------------------
 // The "AP just circles me" and "explodes but kills nobody" reports.
 _drone = [[3000, 2000, 0], "B_Crocus_AP"] call FPVT_fnc_spawnDrone;
@@ -215,7 +217,7 @@ private _killed = {!alive _x} count _squad;
 
 };
 
-if (FPVT_startStage <= 3) then {
+if ([3] call FPVT_fnc_runStage) then {
 // --- Stage 3: Zeus, module dropped onto a drone ----------------------------
 // Zeus attaches the module instead of syncing it, so _units arrives empty.
 // A second, crewed drone of the same class stands in for a player's own drone:
@@ -248,7 +250,7 @@ terminate _watch;
 
 };
 
-if (FPVT_startStage <= 4) then {
+if ([4] call FPVT_fnc_runStage) then {
 // --- Stage 4: Zeus, module dropped on the ground near a drone ---------------
 _drone = [[5000, 2000, 0]] call FPVT_fnc_spawnDrone;
 _tank = [[5000, 2150, 0]] call FPVT_fnc_spawnTank;
@@ -263,7 +265,7 @@ _timedOut = [_drone, _tank, FPVT_fnc_vehicleDone] call FPVT_fnc_await;
 
 };
 
-if (FPVT_startStage <= 5) then {
+if ([5] call FPVT_fnc_runStage) then {
 // --- Stage 5: module placed FIRST, drone added near it afterwards ----------
 // The Zeus "drone station" workflow: place the module once, then put drones next
 // to it. Previously a module that found no drone gave up for good.
@@ -294,7 +296,7 @@ if (_picked) then {
 
 };
 
-if (FPVT_startStage <= 6) then {
+if ([6] call FPVT_fnc_runStage) then {
 // --- Stage 6: plain drones + waypoint, no FPV module -------------------------
 // Baseline for "it doesn't move when I send it via Zeus": does the Crocus follow
 // a waypoint at all, with none of our code involved - from the ground, and when
@@ -320,7 +322,7 @@ if (FPVT_startStage <= 6) then {
 
 };
 
-if (FPVT_startStage <= 7) then {
+if ([7] call FPVT_fnc_runStage) then {
 // --- Stage 7: module-managed drone sent by waypoint toward an enemy ---------
 // The real Zeus workflow: the tank starts out of detection range, so the drone
 // must actually follow the waypoint, spot the tank on the way, and attack.
@@ -356,7 +358,7 @@ terminate _trace;
 
 };
 
-if (FPVT_startStage <= 8) then {
+if ([8] call FPVT_fnc_runStage) then {
 // --- Stage 8: drone AND module created on the player's machine, like Zeus ----
 // In multiplayer, everything a Zeus places belongs to the Zeus player's machine:
 // the module (its init runs there) and the drone with its AI crew. The server
@@ -394,7 +396,7 @@ if (_managed) then {
 
 };
 
-if (FPVT_startStage <= 9) then {
+if ([9] call FPVT_fnc_runStage) then {
 // --- Stage 9: "Control All Drones Of This Type" ----------------------------
 // A drone spawned AFTER the module, never synced or placed on, must be taken
 // over because it is the same type - how the mod originally behaved, and how
@@ -421,7 +423,7 @@ if (_adopted) then {
 };
 };
 
-if (FPVT_startStage <= 10) then {
+if ([10] call FPVT_fnc_runStage) then {
 // --- Stage 10: Target Sides -------------------------------------------------
 // Each case puts a tank the drone must IGNORE closer than the tank it must hit, so
 // a wrong choice shows straight away. 10a/10b use the default (the mission's side
@@ -473,7 +475,7 @@ resistance setFriend [west, _savedRelations select 0]; west setFriend [resistanc
 resistance setFriend [east, _savedRelations select 2]; east setFriend [resistance, _savedRelations select 3];
 };
 
-if (FPVT_startStage <= 11) then {
+if ([11] call FPVT_fnc_runStage) then {
 // --- Stage 11: moving target ------------------------------------------------
 // A tank driving at ~40 km/h. It starts out of range and passes the drone at
 // ~150 m, so the drone must catch a moving target rather than a parked one.

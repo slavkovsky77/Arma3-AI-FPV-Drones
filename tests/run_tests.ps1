@@ -19,6 +19,8 @@ param(
     [ValidateSet("Both", "MP", "SP")] [string]$Mode = "Both",
     [switch]$NoBuild,
     [ValidateRange(1, 99)] [int]$StartStage = 1,   # skip stages that already pass; 99 = skip all (straight to Zeus)
+    [int[]]$Stages = @(),   # run exactly these stages, e.g. -Stages 1,7,11
+    [switch]$Quick,         # speed-iteration set: the attack-run stages (1,2,7,10,11), no pickup/Zeus stages
     [switch]$KeepOpen,
     [switch]$Fullscreen,   # for hands-on sessions (Zeus needs the mouse captured); default is windowed
     [switch]$ServerOnly,   # MP: start just the server; join it yourself from the normal Arma launcher
@@ -108,7 +110,7 @@ function Invoke-SpRun {
     if (Test-Path $spMission) { Remove-Item $spMission -Recurse -Force }
     New-Item -ItemType Directory -Force (Split-Path $spMission) | Out-Null
     Copy-Item $Mission $spMission -Recurse
-    "FPVT_startStage = $StartStage;" | Set-Content -Encoding ASCII (Join-Path $spMission "testconfig.sqf")
+    $TestConfig | Set-Content -Encoding ASCII (Join-Path $spMission "testconfig.sqf")
     $sqm = Join-Path $spMission "mission.sqm"
     (Get-Content $sqm -Raw).Replace("isPlayable=1;", "isPlayer=1;") | Set-Content -Encoding ASCII -NoNewline $sqm
 
@@ -127,7 +129,7 @@ function Invoke-MpRun {
     if (Test-Path $mpMission) { Remove-Item $mpMission -Recurse -Force }
     New-Item -ItemType Directory -Force (Split-Path $mpMission) | Out-Null
     Copy-Item $Mission $mpMission -Recurse
-    "FPVT_startStage = $StartStage;" | Set-Content -Encoding ASCII (Join-Path $mpMission "testconfig.sqf")
+    $TestConfig | Set-Content -Encoding ASCII (Join-Path $mpMission "testconfig.sqf")
 
     New-Item -ItemType Directory -Force $WorkDir | Out-Null
     Get-ChildItem $WorkDir -Filter *.rpt -ErrorAction SilentlyContinue | Remove-Item -Force
@@ -210,6 +212,12 @@ if ($ServerOnly) {
     $KeepOpen = $true
     if (-not $PSBoundParameters.ContainsKey('StartStage')) { $StartStage = 99 }
 }
+# Which stages the mission plays: an explicit list wins, -Quick is the speed-iteration
+# set, otherwise everything from -StartStage on. Copied into each mission as testconfig.sqf.
+if ($Quick -and $Stages.Count -eq 0) { $Stages = @(1, 2, 7, 10, 11) }
+$TestConfig = "FPVT_startStage = $StartStage;`r`nFPVT_stages = [$(($Stages | ForEach-Object { [string]$_ }) -join ',')];"
+if ($Stages.Count) { Write-Host "Stages: $($Stages -join ', ')" -ForegroundColor Cyan }
+
 if (-not $ServerOnly -and (Get-Process -Name arma3_x64 -ErrorAction SilentlyContinue)) { throw "Arma 3 is already running. Close it first." }
 Stop-TestServer
 if (Get-Process -Name arma3server_x64 -ErrorAction SilentlyContinue) { throw "An Arma 3 server that isn't a test server is running. Stop it first." }
