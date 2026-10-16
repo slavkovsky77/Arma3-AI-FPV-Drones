@@ -575,7 +575,7 @@ private _trace = [_drone, _grp7] spawn {
         // Rounded to 10m / 10km/h so it only prints when something actually changes.
         private _now = format ["h=%1m speed=%2km/h toWp=%3m engine=%4 expectedDest=%5",
             round (((getPosATL _d) select 2) / 10) * 10, round (speed _d / 10) * 10,
-            round ((_d distance2D [3000, 4400, 0]) / 10) * 10, isEngineOn _d, (expectedDestination _d) select 1];
+            round ((_d distance2D [3000, 4400, 0]) / 10) * 10, isEngineOn _d, (expectedDestination _d) param [1, "<none>"]];
         if (_now != _last) then { ["7 trace", "INFO", _now] call FPVT_fnc_report; _last = _now; };
         sleep 2;
     };

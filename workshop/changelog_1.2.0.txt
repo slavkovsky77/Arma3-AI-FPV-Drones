@@ -7,6 +7,8 @@ FASTER, DEADLIER
 - Charges go off on contact with the hull instead of a few metres short - roughly twice the damage to tanks
 - Drones dive steeply over cover: a tank parked behind a building still gets hit
 - A target driving away is chased well past the detection range
+- Swarms spread out over the targets instead of all diving on the nearest one (and blowing each other up)
+- A drone heading for a vehicle whose crew was just killed picks a live target instead
 - Waypoints (e.g. set in Zeus) are flown at ~125 km/h instead of 30-60 km/h
 
 NEW

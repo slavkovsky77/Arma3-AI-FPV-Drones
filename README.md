@@ -122,8 +122,10 @@ near every move point and could not catch a moving vehicle:
 - glides down at about 1:3 to a dive entry point 30 m out; if a building or trees block the
   straight line down, the entry point is raised until it doesn't (steep dive over cover)
 - the charge goes off on the surface it's about to hit (or within 3 m of the target's centre)
-- gives up only if the target is destroyed, is 1.5x detection range away, or the drone makes no
-  progress for 12 s - then it searches again
+- gives up only if the target is destroyed or no longer hostile (crew dead), is 1.5x detection
+  range away, or the drone makes no progress for 12 s - then it searches again
+- spreads a swarm out: each other drone already attacking a target makes it count as 150 m
+  further away, so drones pick different targets
 
 Waypoints (e.g. given in Zeus) are flown the same way at ~35 m/s while there's no target.
 
