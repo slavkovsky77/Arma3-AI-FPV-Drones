@@ -3,7 +3,7 @@
     python tests/record_showcase.py --out "C:/Users/<you>/Videos/FPV AI Drones"
 
 Copies the mission into <Arma 3>/Missions, starts the game (same mods and profile as
-run_tests.ps1), and records the screen (Desktop Duplication -> Media Foundation H.264)
+run_tests.py), and records the screen (Desktop Duplication -> Media Foundation H.264)
 and the default speakers (WASAPI loopback) from SHOWCASE|BEGIN to SHOWCASE|END in the
 game's RPT. The SHOWCASE|SCENE times are written next to the video for cutting.
 

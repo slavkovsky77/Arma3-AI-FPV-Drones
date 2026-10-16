@@ -91,7 +91,7 @@ Two VR scenarios ship with the mod - in game under **Play > Showcases**:
 
 Editable copies are in the mod's `examples\` folder - copy them into `Documents\Arma 3\missions` to
 open them in the editor. Sources live in `missions\` (packed into the PBO) and are copied there by
-`build.ps1`.
+`build.py`.
 
 ---
 
@@ -178,6 +178,12 @@ All drone logic runs on the server. Chat messages are broadcast with `remoteExec
 A module manages only the drones it was synchronised to (or attached to in Zeus). It no longer takes
 over every drone of the same type on the map, so players' own drones are left alone.
 
+## Other drone mods
+
+Any drone (`isUav = 1` in its config) can be synced to a module. Tested: **FPV Drone Crocus
+Enhanced** and **Ukraine FPV Drone** (empty, PG-7VL payload, RPG-18), each flying a MOVE, MOVE,
+CYCLE patrol and then attacking a car (`tests/run_tests.py --compat`).
+
 ## Known incompatibilities
 
 - **VCOM AI** — VCOM continuously reasserts AI behaviour and pathing, and fights the drone's own
@@ -188,9 +194,9 @@ over every drone of the same type on the map, so players' own drones are left al
 
 Requires **Arma 3 Tools** (Steam → Library → Tools).
 
-```powershell
-.\build.ps1                 # build + sign with the current key
-.\build.ps1 -KeyName v1_2   # new key for a new release
+```
+python build.py                    # build + sign with the current key
+python build.py --key-name v1_2    # new key for a new release
 ```
 
 Outputs the PBO and `.bisign` to `..\`, and the public `.bikey` to `..\..\keys\`.
@@ -201,21 +207,29 @@ Anyone holding it can sign PBOs that your users' servers will trust.
 
 ## Testing
 
-`tests\run_tests.ps1` plays a scripted test mission you can watch: a chase camera follows each drone
+`tests/run_tests.py` plays a scripted test mission you can watch: a chase camera follows each drone
 attack, and every check is written to the RPT as `FPV_TEST|<check>|PASS/FAIL|<detail>`.
 
-```powershell
-.\tests\run_tests.ps1                  # build, then singleplayer, then multiplayer
-.\tests\run_tests.ps1 -Mode MP         # local dedicated server + your game joining it
-.\tests\run_tests.ps1 -StartStage 7    # skip stages that already pass
-.\tests\run_tests.ps1 -KeepOpen        # stay in game afterwards - press Y for Zeus
+```
+python tests/run_tests.py                     # build, then singleplayer, then multiplayer
+python tests/run_tests.py --mode MP           # local dedicated server + your game joining it
+python tests/run_tests.py --start-stage 7     # skip stages that already pass
+python tests/run_tests.py --keep-open         # stay in game afterwards - press Y for Zeus
 ```
 
-```powershell
-.	estsun_tests.ps1 -Bench 1                  # attack-speed bench only (MP), ~5 min
-.	estsun_tests.ps1 -Bench 1 -Map Stratis     # same attacks at random spots on real terrain
-.	estsun_tests.ps1 -Quick                    # the attack-related stages (1, 2, 7, 10, 11)
 ```
+python tests/run_tests.py --bench 1                  # attack-speed bench only (MP), ~5 min
+python tests/run_tests.py --bench 1 --map Stratis    # same attacks at random spots on real terrain
+python tests/run_tests.py --quick                    # the attack-related stages (1, 2, 7, 10, 11)
+```
+
+```
+python tests/run_tests.py --compat B_UAFPV B_UAFPV:PG7VL --extra-mods <path to the other mod>
+```
+
+`--compat` checks other mods' drones (class, optionally `:payload` for the Ukraine FPV Drone mod's
+payload setting), set up as in the editor: synced to the AT module at mission start, waypoints MOVE,
+MOVE, CYCLE. Each must keep going round its loop and then kill an enemy car that drives through it.
 
 The bench is for tuning the attack run: a parked tank and a car crossing at ~70 km/h at close
 (60 m), medium (150 m) and far (400 m, detection range 500) range, a tank parked behind a building,

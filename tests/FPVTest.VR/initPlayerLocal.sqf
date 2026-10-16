@@ -8,7 +8,7 @@
 
 player allowDamage false;
 
-// Manual session (run_tests.ps1 -Manual): no stages to watch, so run none of the
+// Manual session (run_tests.py --manual): no stages to watch, so run none of the
 // camera/caption code on this machine at all - just hand over to the player.
 FPVT_startStage = 1;
 if (fileExists "testconfig.sqf") then { call compile preprocessFileLineNumbers "testconfig.sqf"; };

@@ -109,6 +109,19 @@ private _takeOwnership = {
     diag_log format ["FPV_AI_Drones: drone %1 belonged to machine %2 - moving it to the server (%3)", _drone, _from, _moved];
 };
 
+// Marks a drone as this module's. Some drone mods replace a drone with a new object
+// that inherits its variables (the Ukraine FPV Drone mod does when its payload is set
+// in Eden): the key tells the module the new one is its own, and the group gives it
+// the route back - the new drone comes with a new crew and group, without waypoints.
+FPV_AI_Drones_moduleCount = (missionNamespace getVariable ["FPV_AI_Drones_moduleCount", 0]) + 1;
+private _key = FPV_AI_Drones_moduleCount;
+private _tag = {
+    params ["_drone", "_key"];
+    _drone setVariable ["FPV_AI_Drones_managed", true, true];
+    _drone setVariable ["FPV_AI_Drones_owner", _key];
+    _drone setVariable ["FPV_AI_Drones_group", group _drone];
+};
+
 // 1. Eden editor: units synchronised to the module.
 private _drones = _units select { [_x] call _isDroneCandidate };
 
@@ -148,7 +161,7 @@ if (_drones isEqualTo []) then {
 
     [_x] call _takeOwnership;
 
-    _x setVariable ["FPV_AI_Drones_managed", true, true];
+    [_x, _key] call _tag;
 } forEach _drones;
 
 // The drone types this module controls. With "Control All Drones Of This Type" on
@@ -187,7 +200,9 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
     _initialSearchHeight,
     _enableChat,
     _targetSides,
-    _attackSpeed
+    _attackSpeed,
+    _key,
+    _tag
 ] spawn {
     params [
         "_logic",
@@ -213,11 +228,32 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
         "_initialSearchHeight",
         "_enableChat",
         "_targetSides",
-        "_attackSpeed"
+        "_attackSpeed",
+        "_key",
+        "_tag"
     ];
 
     while {true} do {
         sleep 2;
+
+        // A drone its own mod replaced (see _tag): the new object carries our key.
+        // Take it over and copy the route from the old group. Before this, the
+        // replacement sat on the ground forever, its old "initialized" flag copied too.
+        {
+            if ((crew _x) isEqualTo []) then { createVehicleCrew _x; };
+            private _oldGrp = _x getVariable ["FPV_AI_Drones_group", grpNull];
+            if (!isNull _oldGrp && { _oldGrp != group _x } && { count waypoints _oldGrp > 1 }) then {
+                (group _x) copyWaypoints _oldGrp;
+            };
+            diag_log format ["FPV_AI_Drones: module %1 taking over %2 (%3) - it replaced one of the module's drones (%4 waypoints)",
+                typeOf _logic, _x, typeOf _x, count waypoints group _x];
+            [_x] call _takeOwnership;
+            [_x, _key] call _tag;
+            _drones pushBack _x;
+            _droneTypes pushBackUnique (typeOf _x);
+        } forEach (vehicles select {
+            alive _x && { (_x getVariable ["FPV_AI_Drones_owner", -1]) isEqualTo _key } && { !(_x in _drones) }
+        });
 
         // The module's area: pick up any drone placed within it that no module
         // controls yet - so in Zeus you place the module once and then just put
@@ -228,7 +264,7 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 diag_log format ["FPV_AI_Drones: module %1 picked up %2 (%3) - placed in its %4m area",
                     typeOf _logic, _x, typeOf _x, _pickupRadius];
                 [_x] call _takeOwnership;
-                _x setVariable ["FPV_AI_Drones_managed", true, true];
+                [_x, _key] call _tag;
                 _drones pushBack _x;
                 _droneTypes pushBackUnique (typeOf _x);   // so "all of this type" covers it too
             } forEach ((_center nearEntities [["Air", "LandVehicle"], _pickupRadius]) select {
@@ -245,7 +281,7 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 diag_log format ["FPV_AI_Drones: module %1 taking over %2 (%3) - same type, not yet controlled",
                     typeOf _logic, _x, typeOf _x];
                 [_x] call _takeOwnership;
-                _x setVariable ["FPV_AI_Drones_managed", true, true];
+                [_x, _key] call _tag;
                 _drones pushBack _x;
             } forEach (allUnitsUAV select {
                 alive _x
@@ -268,6 +304,9 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
             if (!local _x && { !isUAVConnected _x } && { isNull (_x getVariable ["bis_fnc_moduleRemoteControl_owner", objNull]) }) then {
                 [_x] call _takeOwnership;
             };
+            // Current group, for a replacement's route (see _tag): Zeus creates the crew
+            // a moment after the drone, and can regroup it.
+            if (!isNull group _x) then { _x setVariable ["FPV_AI_Drones_group", group _x]; };
             // fpvLogic guards re-entry with the drone's "initialized" variable,
             // so re-spawning here every 2s picks up drones that finished or lost
             // a target without stacking threads on ones already running.

@@ -6,4 +6,4 @@ tooltip = "FPV AI Drones";
 tooltipOwned = "FPV AI Drones Owned";
 overview = "Adds AI-controlled FPV kamikaze drones that automatically acquire and attack enemy targets. Place a drone, synchronise the module, and it hunts on its own - no UAV terminal needed. Anti-Tank and Anti-Personnel presets, full Zeus support, and server-signed.";
 author = "slavkovsky77";
-version = "1.2.0";
+version = "1.2.1";

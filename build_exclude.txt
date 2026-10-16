@@ -8,3 +8,4 @@
 mod.cpp
 tests\*
 workshop\*
+*.py

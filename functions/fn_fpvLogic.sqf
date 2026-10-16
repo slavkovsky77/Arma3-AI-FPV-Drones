@@ -118,9 +118,12 @@ private _isExternallyControlled = {
     };
 };
 
-private _initialized = _uavInstance getVariable ["initialized", false];
-
-if (_initialized) exitWith {};
+// One thread per drone. The guard holds the drone object itself rather than "true":
+// some drone mods replace a drone with a new object and copy all its variables onto
+// it (the Ukraine FPV Drone mod does on a payload change), and a copied "true" kept
+// the replacement from ever being flown. "initialized" stays as plain information.
+if ((_uavInstance getVariable ["FPV_AI_Drones_runner", objNull]) isEqualTo _uavInstance) exitWith {};
+_uavInstance setVariable ["FPV_AI_Drones_runner", _uavInstance];
 
 _uavInstance setBehaviour "CARELESS";
 _uavInstance setSkill 1;
@@ -267,7 +270,27 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 			_cruiseState set ["dest", _wpPos];
 			if (_uavInstance distance2D _wpPos < 40) then {
 				_wpIdx = _wpIdx + 1;
+				// CYCLE: carry on from the waypoint nearest to it, as the engine does, so
+				// a MOVE, MOVE, CYCLE patrol goes round for good. It used to be treated as
+				// the end of the route: the drone parked there after one lap.
+				if (waypointType (_wps select _wpIndex) == "CYCLE") then {
+					private _next = -1;
+					private _nearest = 1e9;
+					for "_i" from 1 to (count _wps - 1) do {
+						private _d = (waypointPosition (_wps select _i)) distance2D _wpPos;
+						if (_i != _wpIndex && { waypointType (_wps select _i) != "CYCLE" } && { _d < _nearest }) then {
+							_nearest = _d;
+							_next = _i;
+						};
+					};
+					if (_next > 0) then { _wpIdx = _next; };
+				};
 				_uavInstance setVariable ["FPV_AI_Drones_route", [_wpIdx, _wpSig]];
+				// Keep the group's own current waypoint on the one we fly to. A drone whose
+				// AI follows waypoints itself (unlike the Crocus) otherwise leans towards a
+				// different one while this script holds it on course: seen with the Ukraine
+				// FPV Drone mod, hanging over its CYCLE waypoint tilted 45 degrees.
+				if (_wpIdx < count _wps) then { _grp setCurrentWaypoint [_grp, _wpIdx]; };
 				_lastWaypointOrder = [];
 			} else {
 				// Re-issue only when the waypoint moved, or every 10s as a backstop -
@@ -296,6 +319,7 @@ _cruiseState set ["stop", true];
 if (isNull _nearestEnemy) exitWith {
 	if (!isNull _uavInstance) then {
 		_uavInstance setVariable ["initialized", false];
+		_uavInstance setVariable ["FPV_AI_Drones_runner", objNull];
 	};
 };
 
@@ -611,4 +635,5 @@ if ((_state get "result") == "detonated") then {
 // At the end of the script, ensure cleanup
 if (!isNull _uavInstance) then {
 	_uavInstance setVariable ["initialized", false];
+	_uavInstance setVariable ["FPV_AI_Drones_runner", objNull];
 };

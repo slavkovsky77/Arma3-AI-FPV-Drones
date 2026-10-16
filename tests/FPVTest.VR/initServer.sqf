@@ -7,7 +7,7 @@
         FPV_TEST|<check>|<PASS|FAIL|INFO>|<detail>
 
     and the run ends with FPV_TEST|SUMMARY|<passed>/<total>, which
-    tests/run_tests.ps1 watches for. The watching client's camera follows
+    tests/run_tests.py watches for. The watching client's camera follows
     whatever FPVT_focus / FPVT_target point at.
 */
 
@@ -122,8 +122,10 @@ FPVT_fnc_await = {
         sleep 0.5;
     };
     if (_stalled) then {
-        ["stalled", "INFO", format ["no progress for 30 s (closest %1 m) - stopped early: %2",
-            round _best, missionNamespace getVariable ["FPVT_caption", ""]]] call FPVT_fnc_report;
+        private _aimAt = if (_target isEqualType []) then { (_target select { alive _x }) param [0, objNull] } else { _target };
+        ["stalled", "INFO", format ["no progress for 30 s (closest %1 m) - stopped early: %2 | drone %3 at %4 agl %5 speed %6 | target at %7 speed %8",
+            round _best, missionNamespace getVariable ["FPVT_caption", ""], _drone, (getPosATL _drone) apply { round _x },
+            round ((getPosATL _drone) select 2), round speed _drone, (getPosATL _aimAt) apply { round _x }, round speed _aimAt]] call FPVT_fnc_report;
     };
     if ([_target] call _doneFn) then {
         ["ttk", "INFO", format ["%1s  %2", (time - _start) toFixed 1, missionNamespace getVariable ["FPVT_caption", ""]]] call FPVT_fnc_report;
@@ -159,12 +161,42 @@ FPVT_AP = [
     ["MoveAdjustmentDelay", 5], ["EnableChatMessages", true]
 ];
 
-// Which stage to start from - tests\run_tests.ps1 -StartStage writes this file.
+// Which stage to start from - tests/run_tests.py --start-stage writes this file.
 FPVT_startStage = 1;
-FPVT_stages = [];   // non-empty: run exactly these stages (run_tests.ps1 -Stages / -Quick)
-FPVT_bench = 0;     // > 0: only the speed bench, this many rounds (run_tests.ps1 -Bench)
+FPVT_stages = [];   // non-empty: run exactly these stages (run_tests.py --stages / --quick)
+FPVT_bench = 0;     // > 0: only the speed bench, this many rounds (run_tests.py --bench)
+FPVT_compat = [];   // [[drone class, payload], ...]: only the other-mods drone check (run_tests.py --compat)
 if (fileExists "testconfig.sqf") then { call compile preprocessFileLineNumbers "testconfig.sqf"; };
 FPVT_fnc_runStage = { params ["_n"]; if (FPVT_stages isEqualTo []) then { _n >= FPVT_startStage } else { _n in FPVT_stages } };
+
+// --- Other mods' drones, set up like an Eden mission (run_tests.py --compat) ----
+// Reported for the "Ukraine FPV Drone" mod: a drone synced to the AT module with
+// waypoints MOVE, MOVE, CYCLE flew its loop, then hung in the air tilting once an
+// enemy vehicle came close. Everything is created here, at mission start and before
+// any player joins, so the order of init scripts matches Eden: the module takes the
+// drone at time 0, the other mod's own drone init runs after time 1. The payload
+// variable is what that mod's Eden "Payload" attribute sets.
+FPVT_compatCases = [];
+if (FPVT_compat isNotEqualTo []) then {
+    {
+        _x params ["_type", ["_payload", ""]];
+        private _x0 = 1500 + _forEachIndex * 1500;
+        private _home = [_x0, 5000, 0];
+        private _drone = objNull;
+        isNil {   // unscheduled: the payload must be set before that mod's init script looks
+            _drone = createVehicle [_type, _home, [], 0, "CAN_COLLIDE"];
+            createVehicleCrew _drone;
+            if (_payload != "") then { _drone setVariable ["UA_FPV_PayloadType", _payload, true]; };
+        };
+        private _grp = group _drone;
+        (_grp addWaypoint [[_x0, 5300, 0], 0]) setWaypointType "MOVE";
+        (_grp addWaypoint [[_x0 + 300, 5300, 0], 0]) setWaypointType "MOVE";
+        (_grp addWaypoint [_home, 0]) setWaypointType "CYCLE";
+        private _l = [_home vectorAdd [8, 0, 0], FPVT_AT] call FPVT_fnc_module;
+        [_l, [_drone], true] call FPV_AI_Drones_fnc_initModule;
+        FPVT_compatCases pushBack [_type, _payload, _drone, _home];
+    } forEach FPVT_compat;
+};
 
 // ---------------------------------------------------------------------------
 
@@ -189,7 +221,116 @@ if (isNil "FPV_AI_Drones_fnc_initModule") exitWith {
     FPVT_finished = true; publicVariable "FPVT_finished";
 };
 
-// --- Speed bench on real terrain (run_tests.ps1 -Bench N -Map Stratis) --------
+// --- Other mods' drones: the run (set up at mission start, see above) ---------
+// Per drone: watch it fly its loop, then send an enemy car through the middle of
+// the loop at ~40 km/h. A drone state line is logged every few seconds.
+if (FPVT_compatCases isNotEqualTo []) then {
+    FPVT_stages = [-1];
+    FPV_AI_Drones_debug = true;
+    // The other mod may replace the drone with a new object (its payload swap does):
+    // then follow whatever drone is now where this one was.
+    private _follow = {
+        params ["_d", "_lastPos"];
+        if (!isNull _d && { alive _d }) exitWith { _d };
+        ((_lastPos nearEntities ["Air", 80]) select { alive _x && { unitIsUAV _x } }) param [0, objNull]
+    };
+    private _state = {
+        params ["_d", "_home"];
+        if (isNull _d) exitWith { "no drone" };
+        private _drv = driver _d;
+        format ["%1 (%2) agl=%3 speed=%4km/h home=%5m managed=%6 initialized=%7 aiMOVE=%8 aiPATH=%9 engine=%10 fuel=%11 up=%12 wp=%13/%14",
+            _d, typeOf _d, round ((getPosATL _d) select 2), round speed _d, round (_d distance2D _home),
+            _d getVariable ["FPV_AI_Drones_managed", false], _d getVariable ["initialized", false],
+            if (isNull _drv) then { "-" } else { _drv checkAIFeature "MOVE" }, if (isNull _drv) then { "-" } else { _drv checkAIFeature "PATH" },
+            isEngineOn _d, (fuel _d) toFixed 2, (vectorUp _d) apply { _x toFixed 2 },
+            currentWaypoint group _d, count waypoints group _d]
+    };
+    {
+        _x params ["_type", "_payload", "_drone0", "_home"];
+        private _label = format ["%1%2", _type, ["", " payload " + _payload] select (_payload != "")];
+        private _x0 = _home select 0;
+        private _drone = [_drone0, _home] call _follow;
+        private _lastPos = if (isNull _drone) then { _home } else { getPosATL _drone };
+
+        // 1. The loop: one lap, the CYCLE back home, and on to waypoint 1 again. It has
+        // been flying since mission start, so laps are counted from here on. Hanging in
+        // one spot in the air for 6 s (the reported symptom) fails it straight away.
+        [format ["Compat %1/%2 - %3: flying its MOVE, MOVE, CYCLE loop", _forEachIndex + 1, count FPVT_compatCases, _label], _drone, objNull] call FPVT_fnc_show;
+        private _legs = [];   // waypoints reached in order: 1, 2, 0 (home = the CYCLE)
+        private _stillSince = -1;
+        private _hung = "";
+        private _until = time + 90;
+        private _nextLog = 0;
+        while { time < _until && { _hung == "" } && { (_legs select [count _legs - 4 max 0]) isNotEqualTo [1, 2, 0, 1] } } do {
+            _drone = [_drone, _lastPos] call _follow;
+            if (!isNull _drone) then {
+                _lastPos = getPosATL _drone;
+                private _at = [[_x0, 5000, 0], [_x0, 5300, 0], [_x0 + 300, 5300, 0]] findIf { _drone distance2D _x < 40 };
+                if (_at >= 0 && { (_legs param [count _legs - 1, -1]) != _at }) then { _legs pushBack _at; };
+                if (speed _drone < 5 && { ((getPosATL _drone) select 2) > 5 }) then {
+                    if (_stillSince < 0) then { _stillSince = time; };
+                    if (time - _stillSince > 6) then { _hung = [_drone, _home] call _state; };
+                } else { _stillSince = -1; };
+            };
+            if (time > _nextLog) then {
+                _nextLog = time + 5;
+                ["compat state", "INFO", [_drone, _home] call _state] call FPVT_fnc_report;
+            };
+            sleep 0.5;
+        };
+        [format ["compat %1 flew its loop round", _label], _hung == "" && { (_legs select [count _legs - 4 max 0]) isEqualTo [1, 2, 0, 1] },
+            format ["waypoints in order %1 (want ...1,2,0,1) hung=%2 drone=%3 (placed %4)", _legs, [_hung, "no"] select (_hung == ""), _drone, _drone0]] call FPVT_fnc_check;
+
+        // 2. Enemy car driving north through the middle of the loop, coming into range
+        // while the drone is on its way round.
+        private _car = createVehicle ["O_MRAP_02_F", [_x0 + 150, 4750, 0], [], 0, "NONE"];
+        _car setDir 0;
+        createVehicleCrew _car;
+        private _cg = group effectiveCommander _car;
+        _cg setBehaviour "CARELESS";
+        _cg setCombatMode "BLUE";
+        { _x disableAI "AUTOTARGET"; _x disableAI "TARGET"; } forEach units _cg;
+        _car limitSpeed 40;
+        _cg addWaypoint [[_x0 + 150, 6400, 0], 0];
+        [format ["Compat %1/%2 - %3: enemy car driving through the loop", _forEachIndex + 1, count FPVT_compatCases, _label], _drone, _car] call FPVT_fnc_show;
+        private _start = time;
+        private _best = 1e9;
+        private _bestAt = time;
+        private _inRangeAt = -1;
+        _nextLog = 0;
+        while { !([_car] call FPVT_fnc_vehicleDone) && { time < _start + 90 } } do {
+            _drone = [_drone, _lastPos] call _follow;
+            if (!isNull _drone) then {
+                _lastPos = getPosATL _drone;
+                private _d = _drone distance _car;
+                if (_d < 200 && { _inRangeAt < 0 }) then { _inRangeAt = time; };
+                if (_d < _best - 5) then { _best = _d; _bestAt = time; };
+            };
+            // Fail fast: in range for 25 s without getting 5 m closer.
+            if (_inRangeAt > 0 && { time - _inRangeAt > 25 } && { time - _bestAt > 25 }) exitWith {
+                ["stalled", "INFO", format ["no progress for 25 s with the car in range (closest %1 m)", round _best]] call FPVT_fnc_report;
+            };
+            if (time > _nextLog) then {
+                _nextLog = time + 2;
+                ["compat state", "INFO", format ["%1 car=%2m carSpeed=%3", [_drone, _home] call _state,
+                    if (isNull _drone) then { "-" } else { round (_drone distance _car) }, round speed _car]] call FPVT_fnc_report;
+            };
+            sleep 0.5;
+        };
+        private _done = [_car] call FPVT_fnc_vehicleDone;
+        if (_done) then {
+            ["ttk", "INFO", format ["%1s  Compat %2 - car through the loop", (time - _start) toFixed 1, _label]] call FPVT_fnc_report;
+        };
+        sleep 3;
+        [format ["compat %1 killed the car", _label], _done,
+            format ["damage=%1 crewAlive=%2 closest=%3m drone=%4", damage _car toFixed 2, { alive _x } count crew _car, round _best,
+                [_drone, _home] call _state]] call FPVT_fnc_check;
+        { deleteVehicle _x } forEach crew _car; deleteVehicle _car;
+        if (!isNull _drone) then { { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; };
+    } forEach FPVT_compatCases;
+};
+
+// --- Speed bench on real terrain (run_tests.py --bench N --map Stratis) --------
 // The same two attacks at random spots on the map - hills, trees, houses - since
 // VR is flat and empty. Per pass: 3 parked tanks 120-250 m away and 3 cars driving
 // past from 280-350 m out. Each line logs the height difference and how many
@@ -280,7 +421,7 @@ if (FPVT_bench > 0 && { worldName != "VR" }) then {
     };
 };
 
-// --- Speed bench (run_tests.ps1 -Bench N) -----------------------------------
+// --- Speed bench (run_tests.py --bench N) -----------------------------------
 // The same two attacks - a parked tank and a car crossing in front of the drone
 // at ~70 km/h - at close, medium and far range, N passes. Nothing else runs.
 // Drones start on the ground, like a drone placed in the editor. The far range

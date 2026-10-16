@@ -21,7 +21,7 @@ Grouping the comments by root cause rather than by author:
 | 2 | **Chat spam** | Quarter, CoffeePot | ✅ **Fixed in `6c230b0`** |
 | 3 | **Mod compatibility** (VCOM, Antistasi, DRO) | Redneck Wolf, shark09stormYT, eth | Still open — see Tier 4 |
 
-> **Tested with `tests\run_tests.ps1`** (watchable SP + MP runs). The original note follows: the config
+> **Tested with `tests/run_tests.py`** (watchable SP + MP runs). The original note follows: the config
 > parses (`CfgConvert`, exit 0) and the SQF brace/paren balance is clean, but neither of those catches
 > a runtime error. See §4 for the test checklist.
 

@@ -9,3 +9,6 @@
 temp/
 steam_api64.dll
 steam_appid.txt
+
+# Python
+__pycache__/

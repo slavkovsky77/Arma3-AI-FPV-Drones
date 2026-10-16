@@ -1,0 +1,5 @@
+v1.2.1 - Patrol loops and other drone mods
+
+FIXED
+- Drones with a CYCLE waypoint (e.g. MOVE, MOVE, CYCLE) now keep flying the loop. They used to stop at the CYCLE waypoint after one lap and hang there - drones from the Ukraine FPV Drone mod hung in the air tilted
+- Ukraine FPV Drone mod: a drone given a payload in the editor (IED, PG-7VL, ...) is replaced by that mod with a new one at mission start. The module now takes over the new drone and gives it the original waypoints; before, it sat on the ground and did nothing

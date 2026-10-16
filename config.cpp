@@ -319,7 +319,7 @@ class CfgVehicles {
 }; 
 // Example scenarios shipped with the mod (VR). They show up under Scenarios, and
 // the Zeus one also in the multiplayer mission list. Editable copies are in the
-// mod's examples\ folder (copied there by build.ps1).
+// mod's examples\ folder (copied there by build.py).
 class CfgMissions {
     class Showcases {
         class FPV_AI_Drones_EdenExample {

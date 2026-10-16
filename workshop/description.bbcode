@@ -4,6 +4,8 @@ AI-controlled FPV kamikaze drones. Give a drone this module and it takes off, hu
 
 Works in the [b]Eden editor[/b] and in [b]Zeus[/b], in singleplayer and on [b]dedicated servers[/b].
 
+[b]1.2.1:[/b] patrol loops (MOVE, MOVE, CYCLE) keep going round instead of stopping after one lap, and drones from the [b]Ukraine FPV Drone[/b] mod work with the modules - also when given a payload in the editor.
+
 [h2]What's new in 1.2.0 - fast and deadly[/h2]
 [list]
 [*][b]Kills in 2-10 seconds[/b] after spotting a target (was 35-65 s) - the drone flies the attack itself at [b]180 km/h[/b] instead of leaving it to the slow AI pilot
@@ -22,7 +24,8 @@ Works in the [b]Eden editor[/b] and in [b]Zeus[/b], in singleplayer and on [b]de
 [*][b]Anti-Tank[/b] and [b]Anti-Personnel[/b] modules - vehicles or infantry, each with sensible presets
 [*][b]Zeus support[/b] - drop the module on a drone, or place it as a [b]drone station[/b]: every drone put near it is picked up, including ones you place later
 [*][b]Control All Drones Of This Type[/b] (on by default) - one module takes over every drone of its type on the map, including drones spawned later
-[*][b]Waypoints[/b] - drones fly their waypoints while searching, and attack whatever they find on the way
+[*][b]Waypoints[/b] - drones fly their waypoints while searching, patrol loops with CYCLE included, and attack whatever they find on the way
+[*][b]Other drone mods[/b] - any UAV can be given a module; tested with FPV Drone Crocus Enhanced and Ukraine FPV Drone
 [*][b]Fast attack run[/b] - flown by the script at 180 km/h, leads moving targets, dives over cover and detonates on contact
 [*][b]Multiplayer-safe[/b] - all drone AI runs on the server; one explosion per drone, never one per player
 [*][b]Signed[/b] - ships with a .bikey for servers with signature checks
@@ -85,4 +88,4 @@ Copy [b]keys\fpv_ai_drones_v1_1.bikey[/b] into your server's keys folder. All dr
 [h2]Reuploads[/h2]
 [b]Do not reupload this mod or its code - modified or not - without my permission and clear credit.[/b] Want to build on it or include it in a modpack? Ask in the comments or on GitHub; I'm happy to say yes. Uploads that copy this mod without permission will be reported.
 
-Created by slavkovsky77 - version 1.2.0
+Created by slavkovsky77 - version 1.2.1
