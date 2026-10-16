@@ -224,15 +224,12 @@ diag_log format ["FPV_AI_Drones: drone %1 acquired %2 (%3) at %4m", _uavInstance
 // tick - which is how the old terminal dive overshot or hit the hull first.
 
 // m/s. Infantry are small and change direction, so AP drones fly a bit slower.
-private _attackSpeed = if ("Man" in _unitKinds) then { 32 } else { 40 };
+private _attackSpeed = if ("Man" in _unitKinds) then { 32 } else { 50 };
 
-// Bigger targets get a bigger trigger radius: nose-first into a tank, the drone
-// meets the hull ~4 m from its centre (seen in testing: only the Crocus' own small
-// warhead went off, 12% damage).
-private _blastRangeOf = {
-    params ["_t"];
-    3 max ((((boundingBoxReal _t) select 2) * 0.8) min 6)
-};
+// Fallback trigger radius around the target's centre mass. Vehicles are normally
+// set off on contact instead (see the trigger in _guide): a radius big enough for a
+// tank's hull left the charge ~2 m short of it - crew killed, hull 20% damaged.
+private _blastRange = 3;
 
 // Puts the payload at _posASL; the handler sets it off on the next frame.
 // Runs inside the handler, so nothing in here may sleep.
@@ -318,10 +315,15 @@ private _guide = {
             if ((_closest vectorDistance _tPos) <= _blast) then { _fire = _closest; };
         };
     };
-    // ... or about to hit something right next to the target (its hull, a wall).
+    // ... or about to hit something right next to the target (its hull, a wall):
+    // then the charge goes off right on the surface it's about to hit.
     if (_fire isEqualTo [] && { (_p vectorDistance _tPos) < 15 }) then {
-        private _probe = _p vectorAdd (_v vectorMultiply ((2 * _dt) + 0.05));
-        if ((lineIntersectsSurfaces [_p, _probe, _uav, objNull, true, 1, "FIRE", "GEOM"]) isNotEqualTo []) then { _fire = _p; };
+        private _probe = _p vectorAdd (_v vectorMultiply (_dt + 0.02));
+        private _hits = lineIntersectsSurfaces [_p, _probe, _uav, objNull, true, 1, "FIRE", "GEOM"];
+        if (_hits isNotEqualTo []) then {
+            (_hits select 0) params ["_hitPos", "_hitNormal"];
+            _fire = _hitPos vectorAdd (_hitNormal vectorMultiply 0.3);
+        };
     };
     if (_fire isNotEqualTo []) exitWith { [_s, _fire, false] call (_s get "arm"); };
 
@@ -390,8 +392,8 @@ private _guide = {
 
 private _state = createHashMapFromArray [
     ["uav", _uavInstance], ["target", _target], ["phase", "run"], ["abort", ""], ["result", ""],
-    ["speed", _attackSpeed], ["accel", 45], ["cruise", _initialSearchHeight],
-    ["blast", [_target] call _blastRangeOf], ["ammo", _customAmmo splitString ", "],
+    ["speed", _attackSpeed], ["accel", 60], ["cruise", _initialSearchHeight],
+    ["blast", _blastRange], ["ammo", _customAmmo splitString ", "],
     ["lastPos", getPosASL _uavInstance], ["arm", _arm],
     ["charges", []], ["blastPos", []], ["impacted", false]
 ];
@@ -442,7 +444,6 @@ while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
                 diag_log format ["FPV_AI_Drones: drone %1 switching to %2 (%3m) from %4 (%5m)",
                     _uavInstance, _new, round (_uavInstance distance _new), _target, round _d];
                 _target = _new;
-                _state set ["blast", [_new] call _blastRangeOf];
                 _state set ["target", _new];
                 _best = _uavInstance distance _new;
                 _bestAt = diag_tickTime;
