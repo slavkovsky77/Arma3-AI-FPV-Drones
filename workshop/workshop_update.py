@@ -1,8 +1,8 @@
 """
-Sets the Workshop description and adds gallery images for an item, through the
-running Steam client (Steamworks ISteamUGC). Used for FPV AI Drones v1.1.0.
+Sets the Workshop description and adds gallery images / YouTube videos for an item,
+through the running Steam client (Steamworks ISteamUGC). Used for FPV AI Drones v1.1.0+.
 
-    python -I workshop_update.py <steam_api64.dll> <description file> [image ...]
+    python -I workshop_update.py <steam_api64.dll> <description file> [image ... | youtube:<video id> ...]
 """
 import ctypes, os, shutil, struct, sys, time
 from ctypes import c_bool, c_char_p, c_int, c_uint32, c_uint64, c_void_p, byref
@@ -11,9 +11,10 @@ APP_ID = 107410            # Arma 3
 ITEM_ID = 3380337397       # FPV AI Drones
 CB_SUBMIT_ITEM_UPDATE = 3404   # k_iSteamUGCCallbacks (3400) + 4 -> SubmitItemUpdateResult_t
 
-dll_src, desc_file, images = sys.argv[1], sys.argv[2], sys.argv[3:]
+dll_src, desc_file, media = sys.argv[1], sys.argv[2], sys.argv[3:]
 desc_file = os.path.abspath(desc_file)
-images = [os.path.abspath(i) for i in images]
+videos = [m.split(":", 1)[1] for m in media if m.startswith("youtube:")]
+images = [os.path.abspath(m) for m in media if not m.startswith("youtube:")]
 # Steam needs steam_api64.dll + steam_appid.txt in the working directory; keep them
 # in a throwaway folder, never next to this script (it lives in the repo).
 import tempfile
@@ -33,6 +34,8 @@ api.SteamAPI_ISteamUGC_SetItemDescription.argtypes = [c_void_p, c_uint64, c_char
 api.SteamAPI_ISteamUGC_SetItemDescription.restype = c_bool
 api.SteamAPI_ISteamUGC_AddItemPreviewFile.argtypes = [c_void_p, c_uint64, c_char_p, c_int]
 api.SteamAPI_ISteamUGC_AddItemPreviewFile.restype = c_bool
+api.SteamAPI_ISteamUGC_AddItemPreviewVideo.argtypes = [c_void_p, c_uint64, c_char_p]
+api.SteamAPI_ISteamUGC_AddItemPreviewVideo.restype = c_bool
 api.SteamAPI_ISteamUGC_SubmitItemUpdate.argtypes = [c_void_p, c_uint64, c_char_p]
 api.SteamAPI_ISteamUGC_SubmitItemUpdate.restype = c_uint64
 api.SteamAPI_ISteamUGC_GetItemUpdateProgress.argtypes = [c_void_p, c_uint64, ctypes.POINTER(c_uint64), ctypes.POINTER(c_uint64)]
@@ -56,6 +59,8 @@ try:
     for img in images:
         ok = api.SteamAPI_ISteamUGC_AddItemPreviewFile(ugc, handle, os.path.abspath(img).encode("utf-8"), 0)  # 0 = image
         print(f"image {os.path.basename(img)} ->", ok)
+    for vid in videos:
+        print(f"youtube video {vid} ->", api.SteamAPI_ISteamUGC_AddItemPreviewVideo(ugc, handle, vid.encode("utf-8")))
 
     call = api.SteamAPI_ISteamUGC_SubmitItemUpdate(ugc, handle, None)   # None: no new change-note entry
     print("submitted, waiting for Steam...")
