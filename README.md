@@ -105,19 +105,22 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Enable Chat Messages | off | off | Drone init/debug messages in system chat |
 | Initial Search Height | 30 | 50 | Cruise height while hunting and flying waypoints (m); also the most the attack run climbs above its target |
 | Target Detection Range | 200 | 200 | Acquisition range. A target is chased until it's 1.5x this far away |
+| Attack Speed | 180 | 144 | Top speed of the attack run (km/h) |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 
-Since v1.2, **Attack Distance, Attack Distance 2D, Attack Height** and the delay / stuck settings
-no longer change anything: the attack run is flown by the script (see below). They're still
-accepted so existing missions and scripts keep working.
+v1.2 removed **Attack Distance, Attack Distance 2D, Attack Height** and the delay / stuck settings
+from the module: the attack run is flown by the script (see below), so they did nothing. Missions
+that set them still load; `fpvLogic` still accepts them as (ignored) parameters.
 
 ### How an attack run works (v1.2)
 
 Once a drone has a target, an `EachFrame` handler flies it - not the AI pilot, which slows down
 near every move point and could not catch a moving vehicle:
 
-- ~50 m/s for anti-vehicle drones, ~40 m/s for anti-personnel, steered every frame
+- 180 km/h for anti-vehicle drones, 144 km/h for anti-personnel (module setting **Attack Speed**),
+  steered every frame
+- keeps 12 m clear of other drones (a bump sets a Crocus off) until the final dive
 - aims where a moving target will be (lead), not where it is
 - glides down at about 1:3 to a dive entry point 30 m out; if a building or trees block the
   straight line down, the entry point is raised until it doesn't (steep dive over cover)
@@ -158,7 +161,8 @@ if (isServer) then {
         5,                          // move adjustment delay
         50,                         // initial search height
         false,                      // enable chat
-        "ENEMIES"                   // target sides: ENEMIES | EAST | WEST | GUER | NOTOWN (optional)
+        "ENEMIES",                  // target sides: ENEMIES | EAST | WEST | GUER | NOTOWN (optional)
+        144                         // attack speed in km/h (optional, default 180 vehicles / 144 infantry)
     ] spawn FPV_AI_Drones_fnc_fpvLogic;
 };
 ```

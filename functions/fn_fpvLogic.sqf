@@ -22,8 +22,11 @@ params [
     "_moveAdjustmentDelay",
     "_initialSearchHeight",
     "_enableChat",
-    ["_targetSides", "ENEMIES"]   // ENEMIES | EAST | WEST | GUER | NOTOWN - see _isHostile
+    ["_targetSides", "ENEMIES"],  // ENEMIES | EAST | WEST | GUER | NOTOWN - see _isHostile
+    ["_attackSpeedKmh", -1]       // top speed of the attack run; -1 = 180 (vehicles) / 144 (infantry)
 ];
+// Since v1.2 _attackDistance, _attackDistance2D, _attackHeight and the delay/stuck
+// parameters are unused (the attack run is flown below); they stay for compatibility.
 
 // Movement commands only take effect where the drone is local. Bail out rather
 // than issuing orders that silently do nothing.
@@ -166,6 +169,28 @@ private _lastWaypointOrderTime = -1e9;
 // wp 1/2 -> 2/2 within 5s while the drone sat on the ground with the engine off).
 (_uavInstance getVariable ["FPV_AI_Drones_route", [1, []]]) params ["_wpIdx", "_wpSig"];
 
+// Keep clear of other aircraft: flying into another drone is fatal - any hit sets a
+// Crocus off. Seen in testing: two drones of a swarm crossed paths right after
+// takeoff and both blew up; and Zeus gives a group's drones waypoints 1 m apart.
+// Returns a velocity to add: away from anything within 12 m, the eastern one climbs.
+private _separation = {
+    params ["_uav", "_p"];
+    private _push = [0, 0, 0];
+    // No sideways shove while still on or near the ground - a scrape counts as a hit.
+    private _side = ((((_p select 2) - (getTerrainHeightASL _p) - 1.5) / 3) max 0) min 1;
+    {
+        private _op = getPosASL _x;
+        private _away = _p vectorDiff _op;
+        private _d = vectorMagnitude _away;
+        if (_x != _uav && { alive _x } && { _d > 0.01 }) then {
+            private _k = ((12 - _d) / 12) max 0;
+            _push = _push vectorAdd ((vectorNormalized [_away select 0, _away select 1, 0]) vectorMultiply (20 * _k * _side));
+            if ((_p select 0) > (_op select 0)) then { _push = _push vectorAdd [0, 0, 8 * _k]; };
+        };
+    } forEach (_uav nearEntities ["Air", 12]);
+    _push
+};
+
 // Waypoint flight. The AI pilot flies a Crocus to its waypoints at 30-60 km/h
 // (its config allows 140): a drone sent 400 m spent ~35 s getting there in testing.
 // While it has a waypoint, this handler flies it there at ~125 km/h, at search
@@ -173,7 +198,7 @@ private _lastWaypointOrderTime = -1e9;
 // The search loop below sets "dest"; [] leaves the drone to the AI pilot.
 private _cruiseState = createHashMapFromArray [
     ["uav", _uavInstance], ["dest", []], ["stop", false],
-    ["speed", 35], ["height", _initialSearchHeight]
+    ["speed", 35], ["height", _initialSearchHeight], ["separate", _separation]
 ];
 private _cruise = {
     private _s = _thisArgs select 0;
@@ -198,7 +223,7 @@ private _cruise = {
     private _vz = (((_zDes - (_p select 2)) * 1.0) max -8) min 10;
     // Slow into the waypoint; straight up first when taking off.
     private _vh = ((_s get "speed") min (_dist * 0.5)) * ((((_agl - 1.5) / 3) max 0) min 1);
-    private _vDes = (_dirH vectorMultiply _vh) vectorAdd [0, 0, _vz];
+    private _vDes = ((_dirH vectorMultiply _vh) vectorAdd [0, 0, _vz]) vectorAdd ([_uav, _p] call (_s get "separate"));
     // Something in the way in the next ~1.5 s: pull up.
     private _look = ((vectorMagnitude _v) * 1.5) max 15;
     if (_vh > 1 && { (lineIntersectsSurfaces [_p, _p vectorAdd ((vectorNormalized _vDes) vectorMultiply _look), _uav, objNull, true, 1, "GEOM", "NONE"]) isNotEqualTo [] }) then {
@@ -290,8 +315,10 @@ diag_log format ["FPV_AI_Drones: drone %1 acquired %2 (%3) at %4m", _uavInstance
 // speed: 40 m/s is under a metre per frame, but several metres per scheduler
 // tick - which is how the old terminal dive overshot or hit the hull first.
 
-// m/s. Infantry are small and change direction, so AP drones fly a bit slower.
-private _attackSpeed = if ("Man" in _unitKinds) then { 40 } else { 50 };
+// m/s. Infantry are small and change direction, so AP drones default a bit slower.
+private _attackSpeed = if (_attackSpeedKmh > 0) then { (_attackSpeedKmh / 3.6) max 5 } else {
+    if ("Man" in _unitKinds) then { 40 } else { 50 }
+};
 
 // Fallback trigger radius around the target's centre mass. Vehicles are normally
 // set off on contact instead (see the trigger in _guide): a radius big enough for a
@@ -457,7 +484,7 @@ private _guide = {
         _vh = _vh * (((((_p select 2) - _ground - 1.5) / 3) max 0) min 1);
         // Popping up over cover: slow down so the climb happens before the wall does.
         if (_popUp) then { _vh = _vh * 0.3; };
-        _vDes = ((vectorNormalized _toAimH) vectorMultiply _vh) vectorAdd [0, 0, _vz];
+        _vDes = (((vectorNormalized _toAimH) vectorMultiply _vh) vectorAdd [0, 0, _vz]) vectorAdd ([_uav, _p] call (_s get "separate"));
 
         // Something in the way in the next ~1.5 s (trees, a building, a ridge): pull up.
         private _look = (((vectorMagnitude _v) * 1.5) max 15) min ((_d2 - 5) max 3);
@@ -497,7 +524,7 @@ private _state = createHashMapFromArray [
     ["uav", _uavInstance], ["target", _target], ["phase", "run"], ["abort", ""], ["result", ""],
     ["speed", _attackSpeed], ["accel", 60], ["cruise", _initialSearchHeight],
     ["blast", _blastRange], ["ammo", _customAmmo splitString ", "],
-    ["lastPos", getPosASL _uavInstance], ["arm", _arm],
+    ["lastPos", getPosASL _uavInstance], ["arm", _arm], ["separate", _separation],
     ["charges", []], ["blastPos", []], ["impacted", false]
 ];
 _uavInstance engineOn true;

@@ -68,6 +68,7 @@ private _enableChat = ["EnableChatMessages", false] call _setting;
 // a plain logic handed to this function by a script gets exactly what it asks for.
 private _takeOverAllOfType = ["TakeOverAllOfType", false] call _setting;
 private _targetSides = ["TargetSides", "ENEMIES"] call _setting;   // who to attack - see fpvLogic _isHostile
+private _attackSpeed = ["AttackSpeed", -1] call _setting;   // km/h; -1 = fpvLogic's default for the target kind
 
 // The module's area: drones within this distance of where it was placed are
 // picked up - at placement, and any placed there later (a Zeus "drone station").
@@ -76,8 +77,8 @@ private _center = getPosATL _logic;   // fixed: a module attached to a drone sho
 
 if (_enableChat) then {
     private _msg = format [
-        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, AttackDistance: %3, AttackDistance2D: %4, AttackHeight: %5, AllowObjectParent: %6, CustomAmmo: %7, TargetDetectionRange: %8",
-        _unitKinds, _targetSource, _attackDistance, _attackDistance2D, _attackHeight, _allowObjectParent, _customAmmo, _targetDetectionRange
+        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, TargetSides: %3, AttackSpeed: %4 km/h, AllowObjectParent: %5, CustomAmmo: %6, TargetDetectionRange: %7",
+        _unitKinds, _targetSource, _targetSides, _attackSpeed, _allowObjectParent, _customAmmo, _targetDetectionRange
     ];
     // Runs on the server, so it has to be broadcast to reach any player.
     _msg remoteExec ["systemChat", 0];
@@ -185,7 +186,8 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
     _moveAdjustmentDelay,
     _initialSearchHeight,
     _enableChat,
-    _targetSides
+    _targetSides,
+    _attackSpeed
 ] spawn {
     params [
         "_logic",
@@ -210,7 +212,8 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
         "_moveAdjustmentDelay",
         "_initialSearchHeight",
         "_enableChat",
-        "_targetSides"
+        "_targetSides",
+        "_attackSpeed"
     ];
 
     while {true} do {
@@ -258,6 +261,13 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
         if (_active isEqualTo [] && { isNull _logic }) exitWith {};
 
         {
+            // A drone that isn't the server's can't be flown from here. Zeus creates a
+            // drone's crew a moment after the drone itself, so one taken over in between
+            // went back to the Zeus player's machine with its crew and then sat there
+            // forever (seen hands-on). Ask again - unless a player is flying it.
+            if (!local _x && { !isUAVConnected _x } && { isNull (_x getVariable ["bis_fnc_moduleRemoteControl_owner", objNull]) }) then {
+                [_x] call _takeOwnership;
+            };
             // fpvLogic guards re-entry with the drone's "initialized" variable,
             // so re-spawning here every 2s picks up drones that finished or lost
             // a target without stacking threads on ones already running.
@@ -277,7 +287,8 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 _moveAdjustmentDelay,
                 _initialSearchHeight,
                 _enableChat,
-                _targetSides
+                _targetSides,
+                _attackSpeed
             ] spawn FPV_AI_Drones_fnc_fpvLogic;
         } forEach _active;
     };

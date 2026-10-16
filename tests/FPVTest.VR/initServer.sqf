@@ -419,10 +419,10 @@ private _edenModule = (allMissionObjects "FPV_AI_Drones_AT_Module") param [0, ob
 // An untouched AT module must run on the AT preset, not the generic fallbacks.
 // initModule writes the resolved values back onto the module.
 private _ish = _edenModule getVariable ["InitialSearchHeight", -1];
-private _ad = _edenModule getVariable ["AttackDistance", -1];
-private _had = _edenModule getVariable ["HeightAdjustmentDelay", -1];
-["1c untouched module uses its own preset", _ish == 30 && { _ad == 10 } && { _had == 0.1 },
-    format ["InitialSearchHeight=%1 AttackDistance=%2 HeightAdjustmentDelay=%3 (AT preset is 30/10/0.1)", _ish, _ad, _had]] call FPVT_fnc_check;
+private _as = _edenModule getVariable ["AttackSpeed", -1];
+private _uk = _edenModule getVariable ["UnitKinds", ""];
+["1c untouched module uses its own preset", _ish == 30 && { _as == 180 } && { _uk == "LandVehicle,Car,Tank" },
+    format ["InitialSearchHeight=%1 AttackSpeed=%2 UnitKinds=%3 (AT preset is 30 / 180 / LandVehicle,Car,Tank)", _ish, _as, _uk]] call FPVT_fnc_check;
 
 _tank = [[2000, 2150, 0]] call FPVT_fnc_spawnTank;
 ["Stage 1/11 - Eden: empty Crocus synced to the Anti-Tank module", _drone, _tank] call FPVT_fnc_show;

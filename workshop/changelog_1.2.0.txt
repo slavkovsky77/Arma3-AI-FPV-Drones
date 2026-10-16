@@ -1,18 +1,22 @@
-v1.2.0 - Fast, aggressive attack runs (DRAFT - not released)
+v1.2.0 - Fast, aggressive attack runs
 
 FASTER, DEADLIER
-- Drones now fly the attack themselves instead of leaving it to the AI pilot: ~180 km/h for Anti-Tank, ~145 km/h for Anti-Personnel
+- Drones fly the attack themselves instead of leaving it to the AI pilot: 180 km/h for Anti-Tank, 144 km/h for Anti-Personnel
 - Kills in 2-10 s after spotting a target, depending on distance (was 35-65 s)
 - Moving vehicles get caught: drones lead their target and hit cars crossing at 70 km/h
 - Charges go off on contact with the hull instead of a few metres short - roughly twice the damage to tanks
 - Drones dive steeply over cover: a tank parked behind a building still gets hit
 - A target driving away is chased well past the detection range
-- Swarms spread out over the targets instead of all diving on the nearest one (and blowing each other up)
+- Swarms spread out over the targets instead of all diving on the nearest one, and keep clear of each other
 - A drone heading for a vehicle whose crew was just killed picks a live target instead
 - Waypoints (e.g. set in Zeus) are flown at ~125 km/h instead of 30-60 km/h
 
 NEW
+- "Attack Speed" setting (km/h) on every module
 - "Target Sides" setting: attack the mission's enemies (default), one side only, or everyone except the drone's own side
 
-NOTE
-- Attack Distance / Attack Distance 2D / Attack Height and the delay/stuck settings no longer change anything - the attack run is flown by the script now
+FIXED
+- Zeus: a drone taken over while Zeus was still creating its crew could sit there forever in multiplayer
+
+REMOVED
+- Attack Distance, Horizontal Attack Distance, Final Attack Height and the delay/stuck settings - the attack run is flown by the script now, so they did nothing. Missions that set them still load fine.
