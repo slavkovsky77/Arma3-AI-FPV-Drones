@@ -81,14 +81,19 @@ private _findNearestEnemyOfType = {
     };
 
     private _nearestEnemy = objNull;
-    private _minDistance = _detectionRange;
+    private _bestScore = 1e9;
 
     {
         private _hasObjectParent = !(isNull objectParent _x);
         private _isValidEnemy = _objectParentAllowed || !_hasObjectParent;
         private _distance = _uav distance _x;
-        if (_isValidEnemy && (_distance < _minDistance)) then {
-            _minDistance = _distance;
+        // Each other live drone already attacking it counts as 150 m further away, so
+        // a swarm spreads over the targets. Every drone used to take the nearest one:
+        // 6 drones went for 2 tanks, blew each other up and left 4 vehicles untouched.
+        private _claims = { alive _x && { _x != _uav } } count (_x getVariable ["FPV_AI_Drones_claims", []]);
+        private _score = _distance + (150 * _claims);
+        if (_isValidEnemy && { _distance < _detectionRange } && { _score < _bestScore }) then {
+            _bestScore = _score;
             _nearestEnemy = _x;
         };
     } forEach _enemies;
@@ -144,6 +149,11 @@ diag_log format ["FPV_AI_Drones: drone %1 (%2, side %3) hunting on machine %4", 
 if (_enableChat) then {
     (format ["Initialized drone: %1", _uavInstance]) remoteExec ["systemChat", 0];
 };
+
+// A drone's claim on its target (see the scoring in _findNearestEnemyOfType).
+// Server-side only, like all of this; dead drones' claims are ignored there.
+private _claim = { params ["_t"]; _t setVariable ["FPV_AI_Drones_claims", ((_t getVariable ["FPV_AI_Drones_claims", []]) - [_uavInstance]) + [_uavInstance]]; };
+private _unclaim = { params ["_t"]; if (!isNull _t) then { _t setVariable ["FPV_AI_Drones_claims", (_t getVariable ["FPV_AI_Drones_claims", []]) - [_uavInstance]]; }; };
 
 //"LandVehicle", "Car", "Tank"
 private _nearestEnemy = objNull;
@@ -206,6 +216,10 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 		break;
 	};
 	_nearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange, _targetSides] call _findNearestEnemyOfType;
+	// Claim it and go straight away: other drones choosing in the same instant must
+	// see the claim (with the sleep below in between, a whole swarm picked the same
+	// two tanks), and it saves up to a second of reaction time.
+	if (!isNull _nearestEnemy) then { [_nearestEnemy] call _claim; break; };
 
 	// No target yet: fly the group's waypoints (e.g. ones set in Zeus) while
 	// searching, steering the drone explicitly. Nothing here runs once a target
@@ -261,6 +275,7 @@ if (isNull _nearestEnemy) exitWith {
 };
 
 private _target = _nearestEnemy;
+[_target] call _claim;
 // Start of the attack run, for the time-to-kill in the detonation log line.
 private _acquiredAt = diag_tickTime;
 private _uavName = str _uavInstance;   // the drone is gone by the time the result is logged
@@ -511,6 +526,9 @@ while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
     private _reason = switch (true) do {
         case ([_uavInstance] call _isExternallyControlled): { "taken over by a player (UAV terminal or Zeus)" };
         case ([_target] call _is_dead): { "target destroyed before the drone got there" };
+        // Crew killed (e.g. by another drone): the hull is still "alive" but no longer
+        // an enemy - don't waste a second drone on it, find a live target instead.
+        case (!([_uavInstance, _target, _targetSides] call _isHostile)): { "target no longer hostile (crew dead or vehicle empty)" };
         // A target that drives away is chased well past the range it was spotted at.
         case (_d > _targetDetectionRange * 1.5): {
             format ["lost target - %1m away (range %2m x 1.5)", round _d, _targetDetectionRange]
@@ -531,7 +549,9 @@ while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
             if (!isNull _new && { _new != _target } && { (_uavInstance distance _new) < _d * 0.6 }) then {
                 diag_log format ["FPV_AI_Drones: drone %1 switching to %2 (%3m) from %4 (%5m)",
                     _uavInstance, _new, round (_uavInstance distance _new), _target, round _d];
+                [_target] call _unclaim;
                 _target = _new;
+                [_target] call _claim;
                 _state set ["target", _new];
                 _best = _uavInstance distance _new;
                 _bestAt = diag_tickTime;
@@ -549,6 +569,7 @@ while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
 // Let the handler finish what it started - an armed charge goes off next frame.
 private _settleBy = diag_tickTime + 3;
 waitUntil { sleep 0.05; (_state get "phase") == "done" || { diag_tickTime > _settleBy } };
+[_target] call _unclaim;
 
 if ((_state get "result") == "detonated") then {
     // One line per detonation per machine. More than one for the same drone

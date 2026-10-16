@@ -368,6 +368,38 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
         [format ["bench %1 infantry squad 150m", _pass], ({!alive _x} count _squad) > 0,
             format ["killed %1/4 timedOut=%2", {!alive _x} count _squad, _to]] call FPVT_fnc_check;
         { deleteVehicle _x } forEach _squad; [_d] call _cleanup; deleteVehicle _l;
+
+        // E: swarm - 6 drones side by side vs 3 tanks + 3 cars spread out 150 m away.
+        // Fast drones arriving together can catch each other's blasts (any hit sets a
+        // Crocus off), and every drone runs a per-frame handler: watch the server FPS.
+        private _drones = [];
+        private _targets = [];
+        for "_k" from 0 to 5 do {
+            private _dk = [[1500 + _k * 15, 6500, 0]] call FPVT_fnc_spawnDrone;
+            _dk setVariable ["FPV_AI_Drones_managed", true, true];
+            _drones pushBack _dk;
+            private _tk = if (_k < 3) then { [[1440 + _k * 60, 6650, 0]] call FPVT_fnc_spawnTank } else {
+                private _c = createVehicle ["O_MRAP_02_F", [1440 + _k * 60, 6650, 0], [], 0, "NONE"];
+                createVehicleCrew _c; [group effectiveCommander _c] call FPVT_fnc_passive; _c };
+            _targets pushBack _tk;
+        };
+        _l = [[1460, 6500, 0], FPVT_AT] call FPVT_fnc_module;
+        [_l, _drones, true] call FPV_AI_Drones_fnc_initModule;
+        [format ["Bench %1/%2 swarm - 6 drones vs 6 vehicles 150 m away", _pass, FPVT_bench], _drones select 2, _targets select 2] call FPVT_fnc_show;
+        private _minFps = 1000;
+        private _swarmEnd = time + 60;
+        private _swarmStart = time;
+        waitUntil {
+            sleep 0.25;
+            _minFps = _minFps min diag_fps;
+            ({ !([_x] call FPVT_fnc_vehicleDone) } count _targets) == 0 || { time > _swarmEnd } || { ({ alive _x } count _drones) == 0 && { time > _swarmStart + 5 } }
+        };
+        sleep 3;
+        private _killed = { [_x] call FPVT_fnc_vehicleDone } count _targets;
+        ["ttk", "INFO", format ["%1s  Bench %2/%3 swarm - %4/6 vehicles done", (time - _swarmStart - 3) toFixed 1, _pass, FPVT_bench, _killed]] call FPVT_fnc_report;
+        [format ["bench %1 swarm 6 drones vs 6 vehicles", _pass], _killed >= 5,
+            format ["%1/6 vehicles done, server fps min %2", _killed, round _minFps]] call FPVT_fnc_check;
+        { [_x] call _cleanup } forEach (_targets + _drones); deleteVehicle _l;
     };
 };
 
