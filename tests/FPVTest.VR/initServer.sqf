@@ -248,6 +248,23 @@ if (FPVT_bench > 0) then {
             ["medium",   4000,   150,    120,     200],
             ["far",      5500,   400,    300,     500]
         ];
+
+        // C: parked tank 150 m away, tucked in right behind a building - a straight
+        // shallow dive would go into the wall.
+        private _d = [[7000, 1500, 0]] call FPVT_fnc_spawnDrone;
+        _d setVariable ["FPV_AI_Drones_managed", true, true];
+        private _wall = createVehicle ["Land_Cargo_HQ_V1_F", [7000, 1636, 0], [], 0, "CAN_COLLIDE"];
+        private _t = [[7000, 1647, 0]] call FPVT_fnc_spawnTank;
+        private _bb = boundingBoxReal _wall;
+        ["bench cover", "INFO", format ["%1 height %2 m, tank %3 m behind its centre",
+            typeOf _wall, (((_bb select 1) select 2) - ((_bb select 0) select 2)) toFixed 1, round (_wall distance2D _t)]] call FPVT_fnc_report;
+        private _l = [[7008, 1500, 0], FPVT_AT] call FPVT_fnc_module;
+        [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+        [format ["Bench %1/%2 cover - tank parked behind a building", _pass, FPVT_bench], _d, _t] call FPVT_fnc_show;
+        private _to = [_d, _t, FPVT_fnc_vehicleDone, 90] call FPVT_fnc_await;
+        [format ["bench %1 cover parked tank behind building", _pass], [_t] call FPVT_fnc_vehicleDone,
+            format ["damage=%1 crewAlive=%2 timedOut=%3", damage _t toFixed 2, {alive _x} count crew _t, _to]] call FPVT_fnc_check;
+        [_t] call _cleanup; [_d] call _cleanup; deleteVehicle _l; deleteVehicle _wall;
     };
 };
 

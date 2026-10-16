@@ -316,10 +316,16 @@ private _guide = {
         };
     };
     // ... or about to hit something right next to the target (its hull, a wall):
-    // then the charge goes off right on the surface it's about to hit.
+    // then the charge goes off right on the surface it's about to hit. "About to" is
+    // one frame's travel plus 1 m for the drone's own size - its body used to clip a
+    // tank's hull while the line from its centre still passed over it.
     if (_fire isEqualTo [] && { (_p vectorDistance _tPos) < 15 }) then {
-        private _probe = _p vectorAdd (_v vectorMultiply (_dt + 0.02));
-        private _hits = lineIntersectsSurfaces [_p, _probe, _uav, objNull, true, 1, "FIRE", "GEOM"];
+        private _reach = ((vectorMagnitude _v) * _dt) + 1;
+        private _hits = lineIntersectsSurfaces [_p, _p vectorAdd ((vectorNormalized _v) vectorMultiply _reach), _uav, objNull, true, 1, "FIRE", "GEOM"];
+        // The target's skin straight towards its centre can be nearer than along the path.
+        if (_hits isEqualTo []) then {
+            _hits = (lineIntersectsSurfaces [_p, _tPos, _uav, objNull, true, 1, "FIRE", "GEOM"]) select { ((_x select 0) vectorDistance _p) < _reach };
+        };
         if (_hits isNotEqualTo []) then {
             (_hits select 0) params ["_hitPos", "_hitNormal"];
             _fire = _hitPos vectorAdd (_hitNormal vectorMultiply 0.3);
@@ -338,26 +344,56 @@ private _guide = {
     private _d2 = vectorMagnitude _toAimH;
     private _ground = getTerrainHeightASL _p;
 
+    // --- obstacles at the target: how steep must the final dive be?
+    // A few times a second, find the lowest height from which there's a clear
+    // straight line down to the target from 30 m out. In the open that's a shallow,
+    // fast dive; a tank parked behind a building needs a steep one - flying the
+    // shallow line went straight into the wall.
+    if (diag_tickTime > (_s getOrDefault ["planAt", 0])) then {
+        _s set ["planAt", diag_tickTime + 0.25];
+        private _back = if (_d2 > 1) then { (vectorNormalized _toAimH) vectorMultiply -30 } else { [0, -30, 0] };
+        private _termH = 45;
+        {
+            if ((lineIntersectsSurfaces [(_aim vectorAdd _back) vectorAdd [0, 0, _x], _aim, _uav, _target, true, 1, "GEOM", "FIRE"]) isEqualTo []) exitWith { _termH = _x; };
+        } forEach [10, 18, 27, 36];
+        _s set ["termH", _termH];
+        _s set ["clear", (lineIntersectsSurfaces [_p, _aim, _uav, _target, true, 1, "GEOM", "FIRE"]) isEqualTo []];
+    };
+    private _termH = _s getOrDefault ["termH", 10];
+    private _clear = _s getOrDefault ["clear", true];
+    // Blocked inside 30 m: climb until the way down is clear - but not forever (a
+    // target under a roof never clears); after 3 s just go for it.
+    if (_d2 < 30 && { !_clear }) then {
+        if !("blockedAt" in _s) then { _s set ["blockedAt", diag_tickTime]; };
+    } else {
+        _s deleteAt "blockedAt";
+    };
+    private _popUp = _d2 < 30 && { !_clear } && { diag_tickTime < (_s get "blockedAt") + 3 };
+
     private _vDes = [];
-    if (_d2 < 30) then {
+    if (_d2 < 30 && { !_popUp }) then {
         // Terminal: straight at it.
         _vDes = (vectorNormalized _toAim) vectorMultiply _speed;
     } else {
-        // Glide path: down at ~1:3 towards the target, never higher above it than the
-        // search height, never lower than 5 m over the ground on the way.
+        // Glide path: down at ~1:3 to the dive's entry point (30 m out, _termH up),
+        // never higher above the target than the search height (unless the dive needs
+        // it), never lower than 5 m over the ground on the way.
         private _slope = 0.35;
-        private _cruise = _s get "cruise";
-        private _onSlope = (_d2 * _slope) < _cruise;
-        private _zDes = ((_aim select 2) + ((_d2 * _slope) min _cruise)) max (_ground + 5);
-        private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _speed] select _onSlope)) max -15) min 12;
+        private _ceiling = (_s get "cruise") max _termH;
+        private _hRel = (_termH + (((_d2 - 30) max 0) * _slope)) min _ceiling;
+        private _onSlope = _d2 > 30 && { _hRel < _ceiling };
+        private _zDes = ((_aim select 2) + _hRel) max (_ground + 5);
+        private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _speed] select _onSlope)) max -15) min 15;
         private _vh = sqrt (((_speed ^ 2) - (_vz ^ 2)) max 0);
         // Still lifting off: straight up until clear of the ground (dragging along it
         // counts as a hit - see the attitude note below), then ease into going flat out.
         _vh = _vh * (((((_p select 2) - _ground - 1.5) / 3) max 0) min 1);
+        // Popping up over cover: slow down so the climb happens before the wall does.
+        if (_popUp) then { _vh = _vh * 0.3; };
         _vDes = ((vectorNormalized _toAimH) vectorMultiply _vh) vectorAdd [0, 0, _vz];
 
         // Something in the way in the next ~1.5 s (trees, a building, a ridge): pull up.
-        private _look = (((vectorMagnitude _v) * 1.5) max 15) min (_d2 - 5);
+        private _look = (((vectorMagnitude _v) * 1.5) max 15) min ((_d2 - 5) max 3);
         private _ahead = _p vectorAdd ((vectorNormalized _vDes) vectorMultiply _look);
         if ((lineIntersectsSurfaces [_p, _ahead, _uav, _target, true, 1, "GEOM", "NONE"]) isNotEqualTo []) then {
             _vDes = [(_vDes select 0) * 0.5, (_vDes select 1) * 0.5, (_vDes select 2) max 10];
@@ -383,9 +419,9 @@ private _guide = {
         _s set ["frames", _n];
         if (_n <= 5 || { diag_tickTime > (_s getOrDefault ["traceAt", 0]) }) then {
             _s set ["traceAt", diag_tickTime + 0.5];
-            diag_log format ["FPV_AI_Drones: trace %1 f%2 dt=%3 agl=%4 v=%5 (%6 m/s) vDes=%7 d3=%8 d2aim=%9",
+            diag_log format ["FPV_AI_Drones: trace %1 f%2 dt=%3 agl=%4 v=%5 (%6 m/s) vDes=%7 d3=%8 d2aim=%9 termH=%10 clear=%11 popUp=%12",
                 _uav, _n, _dt toFixed 3, ((_p select 2) - _ground) toFixed 1, _v apply { _x toFixed 1 }, (vectorMagnitude _v) toFixed 1,
-                _vDes apply { _x toFixed 1 }, (_p vectorDistance _tPos) toFixed 1, _d2 toFixed 1];
+                _vDes apply { _x toFixed 1 }, (_p vectorDistance _tPos) toFixed 1, _d2 toFixed 1, _termH, _clear, _popUp];
         };
     };
 };
