@@ -155,6 +155,52 @@ private _lastWaypointOrderTime = -1e9;
 // waypoint complete the moment it's given, without flying anywhere (seen in testing:
 // wp 1/2 -> 2/2 within 5s while the drone sat on the ground with the engine off).
 (_uavInstance getVariable ["FPV_AI_Drones_route", [1, []]]) params ["_wpIdx", "_wpSig"];
+
+// Waypoint flight. The AI pilot flies a Crocus to its waypoints at 30-60 km/h
+// (its config allows 140): a drone sent 400 m spent ~35 s getting there in testing.
+// While it has a waypoint, this handler flies it there at ~125 km/h, at search
+// height over the ground, easing into the waypoint and parking over the last one.
+// The search loop below sets "dest"; [] leaves the drone to the AI pilot.
+private _cruiseState = createHashMapFromArray [
+    ["uav", _uavInstance], ["dest", []], ["stop", false],
+    ["speed", 35], ["height", _initialSearchHeight]
+];
+private _cruise = {
+    private _s = _thisArgs select 0;
+    private _uav = _s get "uav";
+    if ((_s get "stop") || { isNull _uav } || { !alive _uav }) exitWith {
+        removeMissionEventHandler ["EachFrame", _thisEventHandler];
+    };
+    private _dest = _s get "dest";
+    if (_dest isEqualTo [] || { isGamePaused }) exitWith {};
+    private _dt = diag_deltaTime * accTime;
+    if (_dt <= 0) exitWith {};
+    if (!isEngineOn _uav) then { _uav engineOn true; };   // else it rises with its rotors still
+    private _p = getPosASL _uav;
+    private _v = velocity _uav;
+    private _toH = [(_dest select 0) - (_p select 0), (_dest select 1) - (_p select 1), 0];
+    private _dist = vectorMagnitude _toH;
+    private _dirH = if (_dist > 0.5) then { vectorNormalized _toH } else { [0, 0, 0] };
+    // Search height over the higher of the ground here and ~2 s ahead.
+    private _ahead = _p vectorAdd (_dirH vectorMultiply (((vectorMagnitude _v) * 2) min _dist));
+    private _agl = (_p select 2) - (getTerrainHeightASL _p);
+    private _zDes = ((getTerrainHeightASL _p) max (getTerrainHeightASL _ahead)) + (_s get "height");
+    private _vz = (((_zDes - (_p select 2)) * 1.0) max -8) min 10;
+    // Slow into the waypoint; straight up first when taking off.
+    private _vh = ((_s get "speed") min (_dist * 0.5)) * ((((_agl - 1.5) / 3) max 0) min 1);
+    private _vDes = (_dirH vectorMultiply _vh) vectorAdd [0, 0, _vz];
+    // Something in the way in the next ~1.5 s: pull up.
+    private _look = ((vectorMagnitude _v) * 1.5) max 15;
+    if (_vh > 1 && { (lineIntersectsSurfaces [_p, _p vectorAdd ((vectorNormalized _vDes) vectorMultiply _look), _uav, objNull, true, 1, "GEOM", "NONE"]) isNotEqualTo [] }) then {
+        _vDes = [(_vDes select 0) * 0.5, (_vDes select 1) * 0.5, (_vDes select 2) max 8];
+    };
+    private _dv = _vDes vectorDiff _v;
+    private _maxDv = 25 * _dt;
+    if ((vectorMagnitude _dv) > _maxDv) then { _dv = (vectorNormalized _dv) vectorMultiply _maxDv; };
+    _uav setVelocity (_v vectorAdd _dv);
+};
+addMissionEventHandler ["EachFrame", _cruise, [_cruiseState]];
+
 while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 	if ([_uavInstance] call _is_dead) then {
 		break;
@@ -164,6 +210,7 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 	// No target yet: fly the group's waypoints (e.g. ones set in Zeus) while
 	// searching, steering the drone explicitly. Nothing here runs once a target
 	// is found - the attack takes over.
+	if (isNull _nearestEnemy && { [_uavInstance] call _isExternallyControlled }) then { _cruiseState set ["dest", []]; };
 	if (isNull _nearestEnemy && { !([_uavInstance] call _isExternallyControlled) }) then {
 		private _grp = group _uavInstance;
 		private _wps = waypoints _grp;
@@ -177,6 +224,8 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 		if (_wpIdx < count _wps) then {
 			private _wpIndex = _wpIdx;
 			private _wpPos = waypointPosition (_wps select _wpIdx);
+			// Fly to it - and once it's the last one reached, stay parked over it.
+			_cruiseState set ["dest", _wpPos];
 			if (_uavInstance distance2D _wpPos < 40) then {
 				_wpIdx = _wpIdx + 1;
 				_uavInstance setVariable ["FPV_AI_Drones_route", [_wpIdx, _wpSig]];
@@ -199,6 +248,9 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 
 	sleep (1);
 };
+
+// The attack run (or nothing, if the drone is gone) takes over from here.
+_cruiseState set ["stop", true];
 
 // Reachable whenever the drone dies or is deleted mid-search. This used to be
 // "continue" at script scope, outside any loop, which throws a script error.
