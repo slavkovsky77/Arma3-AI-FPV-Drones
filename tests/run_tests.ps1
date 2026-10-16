@@ -5,6 +5,7 @@
 #   .\tests\run_tests.ps1 -Mode SP        # just singleplayer
 #   .\tests\run_tests.ps1 -KeepOpen       # leave the game running after the last run (e.g. to try Zeus)
 #   .\tests\run_tests.ps1 -NoBuild        # skip rebuilding the PBO
+#   .\tests\run_tests.ps1 -Bench 3        # attack-speed bench only: parked tank + crossing car, 3 rounds (MP)
 #
 # Both modes play the same mission (tests\FPVTest.VR) with a chase camera, and
 # write results as FPV_TEST lines to the RPT, which this script follows. They
@@ -21,6 +22,7 @@ param(
     [ValidateRange(1, 99)] [int]$StartStage = 1,   # skip stages that already pass; 99 = skip all (straight to Zeus)
     [int[]]$Stages = @(),   # run exactly these stages, e.g. -Stages 1,7,11
     [switch]$Quick,         # speed-iteration set: the attack-run stages (1,2,7,10,11), no pickup/Zeus stages
+    [ValidateRange(0, 20)] [int]$Bench = 0,   # just the attack-speed bench, this many rounds (default -Mode MP)
     [switch]$KeepOpen,
     [switch]$Fullscreen,   # for hands-on sessions (Zeus needs the mouse captured); default is windowed
     [switch]$ServerOnly,   # MP: start just the server; join it yourself from the normal Arma launcher
@@ -215,8 +217,10 @@ if ($ServerOnly) {
 # Which stages the mission plays: an explicit list wins, -Quick is the speed-iteration
 # set, otherwise everything from -StartStage on. Copied into each mission as testconfig.sqf.
 if ($Quick -and $Stages.Count -eq 0) { $Stages = @(1, 2, 7, 10, 11) }
-$TestConfig = "FPVT_startStage = $StartStage;`r`nFPVT_stages = [$(($Stages | ForEach-Object { [string]$_ }) -join ',')];"
-if ($Stages.Count) { Write-Host "Stages: $($Stages -join ', ')" -ForegroundColor Cyan }
+if ($Bench -gt 0 -and -not $PSBoundParameters.ContainsKey('Mode')) { $Mode = "MP" }
+$TestConfig = "FPVT_startStage = $StartStage;`r`nFPVT_stages = [$(($Stages | ForEach-Object { [string]$_ }) -join ',')];`r`nFPVT_bench = $Bench;"
+if ($Bench -gt 0) { Write-Host "Speed bench: $Bench rounds" -ForegroundColor Cyan }
+elseif ($Stages.Count) { Write-Host "Stages: $($Stages -join ', ')" -ForegroundColor Cyan }
 
 if (-not $ServerOnly -and (Get-Process -Name arma3_x64 -ErrorAction SilentlyContinue)) { throw "Arma 3 is already running. Close it first." }
 Stop-TestServer

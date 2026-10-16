@@ -211,275 +211,264 @@ if (isNull _nearestEnemy) exitWith {
 private _target = _nearestEnemy;
 // Start of the attack run, for the time-to-kill in the detonation log line.
 private _acquiredAt = diag_tickTime;
+private _uavName = str _uavInstance;   // the drone is gone by the time the result is logged
 diag_log format ["FPV_AI_Drones: drone %1 acquired %2 (%3) at %4m", _uavInstance, _target, typeOf _target, round (_uavInstance distance _target)];
-private _currentDistance2d = _uavInstance distance2D _target;
-private _currentDistance = (getPosASL _uavInstance) vectorDistance (getPosASL _target);
 
-private _initialDistance2d = _currentDistance2d;
+// --- Attack run ---------------------------------------------------------------
+// Flown by this script, not the AI pilot. The pilot slows down near every move
+// point and re-plans each time the point moves, so runs took 35-65 s and a tank
+// driving at 40 km/h was never caught (v1.1 test runs). From acquisition on, an
+// EachFrame handler steers the drone's velocity at where the target will be,
+// along a glide path that brings it down onto it. Every frame matters at this
+// speed: 40 m/s is under a metre per frame, but several metres per scheduler
+// tick - which is how the old terminal dive overshot or hit the hull first.
 
-private _lastSetHeight = _initialSearchHeight;
-private _lastSetHeightTime = diag_tickTime;
-// True if the attack loop is skipped entirely because the target is already close;
-// every break-off path inside the loop sets it false first.
-private _uavCanHitTarget = true;
-private _predictedDistance = _currentDistance;
+// m/s. Infantry are small and change direction, so AP drones fly a bit slower.
+private _attackSpeed = if ("Man" in _unitKinds) then { 32 } else { 40 };
 
-private _lastMoveTime = diag_tickTime;
-private _lastLookForNewEnemyTime = diag_tickTime;
-private _sleepInterval = 0.05;
-private _ascendTimeout = 10;
-
-// Terminal dive: how close (3D, to the target's centre of mass) before the charge
-// goes off, how fast to dive, and how long to keep trying.
-private _detonationDistance = 3;
-private _diveSpeed = 20;
-private _diveTimeout = 6;
-private _aimOffset = [0, 0, 1];   // centre mass, not the ground under the target
-
-private _isStuck = {
-    params ["_uav", "_stuckTarget", "_lastDistance", "_threshold"];
-    private _distanceNow = _uav distance2D _stuckTarget;   // horizontal: climbing is not "no progress"
-    private _relativeChange = abs(_distanceNow - _lastDistance) / _lastDistance;
-    _relativeChange < _threshold
+// Bigger targets get a bigger trigger radius: nose-first into a tank, the drone
+// meets the hull ~4 m from its centre (seen in testing: only the Crocus' own small
+// warhead went off, 12% damage).
+private _blastRangeOf = {
+    params ["_t"];
+    3 max ((((boundingBoxReal _t) select 2) * 0.8) min 6)
 };
 
-
-private _handleStuckPos = {
-    params ["_uav"];
-
-    // Get current position and height
-    private _currentPos = getPosATL _uav;
-    private _currentHeight = _currentPos select 2;
-
-    // Calculate new position while maintaining height
-    private _randomOffset = [
-        (random 100) - 50,
-        (random 100) - 50,
-        (random 100) - 50
-    ];
-    private _newPos = _currentPos vectorAdd _randomOffset;
-
-    // Force immediate stop, then move to new position
-    _uav forceSpeed 0;
-    sleep 2;
-    _uav flyInHeight [(_currentHeight + (_randomOffset select 2)) max 15, true];
-    _uav move _newPos;
-    _uav forceSpeed 150;
-    sleep 5;
+// Puts the payload at _posASL; the handler sets it off on the next frame.
+// Runs inside the handler, so nothing in here may sleep.
+private _arm = {
+    params ["_s", "_posASL", "_impacted"];
+    private _charges = (_s get "ammo") apply {
+        private _c = createVehicle [_x, ASLToAGL _posASL, [], 0, "CAN_COLLIDE"];
+        _c setPosASL _posASL;
+        _c
+    };
+    // deleteVehicleCrew is unary. It used to be written as a binary call, which
+    // threw on this path - a candidate for "the drones explode but nothing dies".
+    if (!isNull (_s get "uav")) then { deleteVehicleCrew (_s get "uav"); };
+    _s set ["charges", _charges];
+    _s set ["blastPos", _posASL];
+    _s set ["impacted", _impacted];
+    _s set ["phase", "armed"];
 };
 
+private _guide = {
+    private _s = _thisArgs select 0;
+    if (isGamePaused) exitWith {};
+    private _uav = _s get "uav";
+    private _target = _s get "target";
 
-// ... in the main loop, add these variables before the while loop ...
-private _lastPos = getPosASL _uavInstance;
-private _lastPosTime = diag_tickTime;
-
-// Add these variables before the main while loop
-private _lastStuckCheckDistance = _currentDistance2d;
-private _lastStuckCheckTime = diag_tickTime;
-
-// Why the attack run ended early, if it did - logged below so a user's RPT says
-// whether the drone gave up, got stuck, lost its target or was taken over.
-private _exitReason = "";
-
-// Modify the main while loop to include stuck detection
-// Hand over to the terminal dive as soon as the drone is close in 3D OR lined up
-// overhead. Requiring both used to leave it hovering a few metres off-centre above
-// the target (seen in testing as ~6s at 10m height and 0km/h before it lined up);
-// the dive steers itself, so it doesn't need a perfect setup.
-while {(_predictedDistance > _attackDistance * 1.5) && { _currentDistance2d > _attackDistance2D }} do {
-	sleep _sleepInterval;
-	_uavCanHitTarget = false;
-
-	if ([_uavInstance] call _isExternallyControlled) then {
-		_exitReason = "taken over by a player (UAV terminal or Zeus)";
-        break;
+    if ((_s get "phase") == "armed") exitWith {
+        { _x setDamage 1; } forEach (_s get "charges");
+        if (!isNull _uav) then { _uav setDamage 1; };
+        _s set ["result", "detonated"];
+        _s set ["phase", "done"];
+        removeMissionEventHandler ["EachFrame", _thisEventHandler];
     };
 
-	// is_dead(_uavInstance)
-	if ([_uavInstance] call _is_dead) then {
-		_exitReason = "drone destroyed";
-		break;
-	};
+    private _aimOffset = [0, 0, 1];   // centre mass, not the ground under the target
+    private _last = _s get "lastPos";
+    private _tPos = (getPosASL _target) vectorAdd _aimOffset;
 
-	// Current target check. This used to compare against a hardcoded 200, which
-	// ignored the configured range: raising Target Detection Range above 200 made
-	// the drone acquire a target and immediately drop it, over and over.
-	if ([_target] call _is_dead || (_currentDistance > _targetDetectionRange)) then {
-		_exitReason = format ["lost target (alive=%1, distance=%2m, range=%3m)", alive _target, round _currentDistance, _targetDetectionRange];
-		break;
-	};
+    // Drone gone: it hit something, its own warhead went off and the Crocus mod
+    // deleted it. Next to the target that is the hit we wanted, so set the payload
+    // off where it last was; anywhere else it just crashed.
+    if (isNull _uav || { !alive _uav }) exitWith {
+        if (!isNull _target && { (_last vectorDistance _tPos) < 10 }) then {
+            [_s, _last, true] call (_s get "arm");
+        } else {
+            _s set ["result", format ["drone lost %1m from the target - no detonation", round (_last vectorDistance _tPos)]];
+            _s set ["phase", "done"];
+            removeMissionEventHandler ["EachFrame", _thisEventHandler];
+        };
+    };
 
-	private _currentHeight = ((getPosATL _uavInstance) select 2);
-	private _distanceRatio = _currentDistance2d / _initialDistance2d min 1.0;
-	private _desiredHeight = _attackHeight + (_initialSearchHeight - _attackHeight) * _distanceRatio;
-	private _currentTime = diag_tickTime;
+    // Stop requested by the script below (target dead, out of range, taken over...).
+    // Done here so the two can never disagree about whether the charge went off.
+    if ((_s get "abort") != "") exitWith {
+        _s set ["result", _s get "abort"];
+        _s set ["phase", "done"];
+        removeMissionEventHandler ["EachFrame", _thisEventHandler];
+    };
 
-	private _setHeightFrequency = 1;
-	if ((_currentHeight + 1 >= _attackHeight) && (_currentHeight > _desiredHeight + 1) && (_currentTime > _lastSetHeightTime + _setHeightFrequency)) then {
+    if (isNull _target) exitWith {
+        _s set ["result", "target deleted"];
+        _s set ["phase", "done"];
+        removeMissionEventHandler ["EachFrame", _thisEventHandler];
+    };
 
-		private _canChangeHeight = true;
-		if ((_desiredHeight > _lastSetHeight) && (_currentTime <= _lastSetHeightTime + _ascendTimeout)) then {
-			_canChangeHeight = false;
-		};
-		if (_canChangeHeight) then {
-			_lastSetHeight = _desiredHeight;
-			_lastSetHeightTime = _currentTime;
-			_uavInstance flyInHeight [_lastSetHeight, true];
-			private _sleepTime = ((_currentHeight / _desiredHeight) * _heightAdjustmentDelay) max 0.1;
-			sleep _sleepTime;
-		};
-	};
+    private _dt = diag_deltaTime * accTime;
+    if (_dt <= 0) exitWith {};
+    private _p = getPosASL _uav;
+    private _v = velocity _uav;
+    private _speed = _s get "speed";
+    private _blast = _s get "blast";
+    _s set ["lastPos", _p];
 
-	// Predictive targeting: adjust path based on target's velocity
-	private _targetPos = getPosASL _target;
-	private _targetVel = velocity _target;
-	private _uavPos = getPosASL _uavInstance;
-	private _uavVel = velocity _uavInstance;
+    // --- trigger: in blast range, or will be by next frame, ...
+    private _fire = [];
+    if ((_p vectorDistance _tPos) <= _blast + ((vectorMagnitude _v) * _dt)) then { _fire = _p; };
+    // ... or passed through it since last frame (low frame rate), ...
+    if (_fire isEqualTo []) then {
+        private _seg = _p vectorDiff _last;
+        private _segLen2 = _seg vectorDotProduct _seg;
+        if (_segLen2 > 0.01) then {
+            private _u = ((((_tPos vectorDiff _last) vectorDotProduct _seg) / _segLen2) max 0) min 1;
+            private _closest = _last vectorAdd (_seg vectorMultiply _u);
+            if ((_closest vectorDistance _tPos) <= _blast) then { _fire = _closest; };
+        };
+    };
+    // ... or about to hit something right next to the target (its hull, a wall).
+    if (_fire isEqualTo [] && { (_p vectorDistance _tPos) < 15 }) then {
+        private _probe = _p vectorAdd (_v vectorMultiply ((2 * _dt) + 0.05));
+        if ((lineIntersectsSurfaces [_p, _probe, _uav, objNull, true, 1, "FIRE", "GEOM"]) isNotEqualTo []) then { _fire = _p; };
+    };
+    if (_fire isNotEqualTo []) exitWith { [_s, _fire, false] call (_s get "arm"); };
 
-	// Simple prediction assuming constant velocity and linear motion
-	private _predictedTargetPos = _targetPos vectorAdd (_targetVel vectorMultiply _sleepInterval);
-	private _predictedUavPos = _uavPos vectorAdd (_uavVel vectorMultiply _sleepInterval);
-	_predictedDistance = _predictedUavPos vectorDistance _predictedTargetPos;
+    // --- steering: lead the target - aim where it will be when we get there
+    private _tVel = velocity _target;
+    private _aim = _tPos;
+    for "_i" from 1 to 2 do {
+        _aim = _tPos vectorAdd (_tVel vectorMultiply (((_aim vectorDistance _p) / _speed) min 6));
+    };
+    private _toAim = _aim vectorDiff _p;
+    private _toAimH = [_toAim select 0, _toAim select 1, 0];
+    private _d2 = vectorMagnitude _toAimH;
+    private _ground = getTerrainHeightASL _p;
 
+    private _vDes = [];
+    if (_d2 < 30) then {
+        // Terminal: straight at it.
+        _vDes = (vectorNormalized _toAim) vectorMultiply _speed;
+    } else {
+        // Glide path: down at ~1:3 towards the target, never higher above it than the
+        // search height, never lower than 5 m over the ground on the way.
+        private _slope = 0.35;
+        private _cruise = _s get "cruise";
+        private _onSlope = (_d2 * _slope) < _cruise;
+        private _zDes = ((_aim select 2) + ((_d2 * _slope) min _cruise)) max (_ground + 5);
+        private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _speed] select _onSlope)) max -15) min 12;
+        private _vh = sqrt (((_speed ^ 2) - (_vz ^ 2)) max 0);
+        // Still lifting off: straight up until clear of the ground (dragging along it
+        // counts as a hit - see the attitude note below), then ease into going flat out.
+        _vh = _vh * (((((_p select 2) - _ground - 1.5) / 3) max 0) min 1);
+        _vDes = ((vectorNormalized _toAimH) vectorMultiply _vh) vectorAdd [0, 0, _vz];
 
-	private _movePos = getPosATL _target;
-	if (_predictedDistance < _attackDistance * 2) then {
-		private _uavPosATL = getPosATL _uavInstance;
-		private _targetPosATL = getPosATL _target;
-		private _moveVector = (_targetPosATL vectorDiff _uavPosATL);
-		_moveVector = vectorNormalized _moveVector;
+        // Something in the way in the next ~1.5 s (trees, a building, a ridge): pull up.
+        private _look = (((vectorMagnitude _v) * 1.5) max 15) min (_d2 - 5);
+        private _ahead = _p vectorAdd ((vectorNormalized _vDes) vectorMultiply _look);
+        if ((lineIntersectsSurfaces [_p, _ahead, _uav, _target, true, 1, "GEOM", "NONE"]) isNotEqualTo []) then {
+            _vDes = [(_vDes select 0) * 0.5, (_vDes select 1) * 0.5, (_vDes select 2) max 10];
+        };
+    };
 
-		// Aim past the target so the ram carries through, but cap the lead.
-		// Scaling it at 1.5 * AttackDistance2D gave the AP module a 12m overshoot,
-		// so the drone flew well past infantry, turned, and overshot again -
-		// which on the ground looks like a drone harmlessly circling you.
-		private _overshoot = (1.5 * _attackDistance2D) min 4;
-		_moveVector = _moveVector vectorMultiply (_predictedDistance + _overshoot);
+    // Ease towards it rather than snapping: at most "accel" m/s per second of change.
+    private _dv = _vDes vectorDiff _v;
+    private _maxDv = (_s get "accel") * _dt;
+    if ((vectorMagnitude _dv) > _maxDv) then { _dv = (vectorNormalized _dv) vectorMultiply _maxDv; };
+    private _vNew = _v vectorAdd _dv;
 
-		_movePos = _uavPosATL vectorAdd _moveVector;
-		_movePos = [_movePos select 0, _movePos select 1, _attackHeight];
-	} else {
-		// Hold the stuck clock until the drone is airborne and well into its climb.
-		// Engine start, takeoff and climbing to search height take longer than the
-		// check interval, and were being mistaken for being stuck - the drone got
-		// shoved to a random spot and restarted its attack (seen in test runs as
-		// "stuck - distance 150m -> 155m in 16s" right after spawning).
-		if (isTouchingGround _uavInstance || { _currentHeight < (_initialSearchHeight * 0.5) }) then {
-			_lastStuckCheckDistance = _currentDistance2d;
-			_lastStuckCheckTime = _currentTime;
-		};
-		if (_currentTime - _lastStuckCheckTime > _stuckCheckInterval) then {
-			if ([_uavInstance, _target, _lastStuckCheckDistance, _stuckThreshold] call _isStuck) then {
-				_exitReason = format ["stuck - distance %1m -> %2m in %3s (threshold %4)",
-					round _lastStuckCheckDistance, round _currentDistance2d, round (_currentTime - _lastStuckCheckTime), _stuckThreshold];
-        		[_uavInstance] call _handleStuckPos;
-				break;
-			};
-			_lastStuckCheckDistance = _currentDistance2d;
-			_lastStuckCheckTime = _currentTime;
-		};
-	};
+    // Velocity only - the attitude is left to the AI pilot. Setting it every frame
+    // (setVectorDirAndUp) cancels that frame's movement: in testing the drone read
+    // back 40 m/s while actually crawling at ~1 m/s. Pointing the nose along a climb
+    // also tipped the tail into the ground on takeoff, and the Crocus mod treats ANY
+    // hit as impact - its "hit" handler fires the drone's own warhead and deletes it.
+    _uav setVelocity _vNew;
 
-
-	_uavInstance DoMove _movePos;
-	// Scale sleep based on how far we are from both min and max distances
-	private _distanceRange = _targetDetectionRange - _attackDistance;
-	private _distanceFromMax = (_predictedDistance - _attackDistance) max 0;
-	private _distanceRatio = (_distanceFromMax / _distanceRange) min 1.0;
-	private _moveSleepTime = ((_distanceRatio * _distanceRatio) * _moveAdjustmentDelay) max 0.01;
-
-	sleep _moveSleepTime;
-
-	_uavInstance forceSpeed 150;
-	_lastMoveTime = _currentTime;
-
-
-	// occasionally look for new enemy
-	private _lastLookForNewEnemyFreq = 4;
-	if (_currentTime > _lastLookForNewEnemyTime + _lastLookForNewEnemyFreq) then {
-		private _newNearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange, _targetSides] call _findNearestEnemyOfType;
-		if (!(isNull _newNearestEnemy) && (_newNearestEnemy != _target)) then {
-			_target = _newNearestEnemy;
-		};
-		_lastLookForNewEnemyTime = _currentTime;
-	};
-
-
-	_currentDistance2d = _uavInstance distance2D _target;
-	_currentDistance = (getPosASL _uavInstance) vectorDistance (getPosASL _target);
-	_uavCanHitTarget = true;
+    // Flight trace for tuning (FPV_AI_Drones_debug = true): the first frames, then twice a second.
+    if (missionNamespace getVariable ["FPV_AI_Drones_debug", false]) then {
+        private _n = (_s getOrDefault ["frames", 0]) + 1;
+        _s set ["frames", _n];
+        if (_n <= 5 || { diag_tickTime > (_s getOrDefault ["traceAt", 0]) }) then {
+            _s set ["traceAt", diag_tickTime + 0.5];
+            diag_log format ["FPV_AI_Drones: trace %1 f%2 dt=%3 agl=%4 v=%5 (%6 m/s) vDes=%7 d3=%8 d2aim=%9",
+                _uav, _n, _dt toFixed 3, ((_p select 2) - _ground) toFixed 1, _v apply { _x toFixed 1 }, (vectorMagnitude _v) toFixed 1,
+                _vDes apply { _x toFixed 1 }, (_p vectorDistance _tPos) toFixed 1, _d2 toFixed 1];
+        };
+    };
 };
 
-if (_exitReason != "") then {
-	diag_log format ["FPV_AI_Drones: drone %1 broke off its attack run: %2", _uavInstance, _exitReason];
+private _state = createHashMapFromArray [
+    ["uav", _uavInstance], ["target", _target], ["phase", "run"], ["abort", ""], ["result", ""],
+    ["speed", _attackSpeed], ["accel", 45], ["cruise", _initialSearchHeight],
+    ["blast", [_target] call _blastRangeOf], ["ammo", _customAmmo splitString ", "],
+    ["lastPos", getPosASL _uavInstance], ["arm", _arm],
+    ["charges", []], ["blastPos", []], ["impacted", false]
+];
+_uavInstance engineOn true;
+addMissionEventHandler ["EachFrame", _guide, [_state]];
+if (missionNamespace getVariable ["FPV_AI_Drones_debug", false]) then {
+    _uavInstance addEventHandler ["Hit", { params ["_u", "_src", "_dmg", "_inst"];
+        diag_log format ["FPV_AI_Drones: trace %1 HIT by %2 (%3) dmg %4 v=%5", _u, _src, typeOf _src, _dmg, velocity _u]; }];
+    _uavInstance addEventHandler ["Killed", { params ["_u", "_k"];
+        diag_log format ["FPV_AI_Drones: trace %1 KILLED by %2 at %3", _u, _k, getPosATL _u]; }];
+    _uavInstance addEventHandler ["Deleted", { params ["_u"];
+        diag_log format ["FPV_AI_Drones: trace %1 DELETED at %2 v=%3", _u, getPosATL _u, velocity _u]; }];
 };
 
-// final approach and explosion
-if (_uavCanHitTarget) then {
-	// Terminal guidance: steer straight at the target's centre of mass for the
-	// last few metres instead of leaving it to the AI pilot. The pilot alone would
-	// hover AttackHeight above the target (8m for AP - survivable), and forcing
-	// flyInHeight 0 instead flew it into the ground short of the target.
-	// Bigger targets get a bigger trigger radius: approaching a tank nose-first,
-	// the drone hits the hull ~4m out from its centre - before a fixed 3m trigger -
-	// and only the Crocus' own small warhead went off (seen in testing: 12% damage).
-	private _blastRange = _detonationDistance max ((((boundingBoxReal _target) select 2) * 0.8) min 6);
-	private _lastPos = getPosATL _uavInstance;
-	private _diveDeadline = diag_tickTime + _diveTimeout;
-	while {
-		!([_uavInstance] call _is_dead)
-		&& { !([_target] call _is_dead) }
-		&& { ((getPosASL _uavInstance) vectorDistance ((getPosASL _target) vectorAdd _aimOffset)) > _blastRange }
-		&& { diag_tickTime < _diveDeadline }
-	} do {
-		private _toTarget = ((getPosASL _target) vectorAdd _aimOffset) vectorDiff (getPosASL _uavInstance);
-		_uavInstance setVelocity ((vectorNormalized _toTarget) vectorMultiply _diveSpeed);
-		_lastPos = getPosATL _uavInstance;
-		sleep 0.05;
-	};
+// The handler flies and fires; this loop decides when to give up and keeps the
+// target choice current.
+private _best = _uavInstance distance _target;
+private _bestAt = diag_tickTime;
+private _lastLook = diag_tickTime;
+private _lastOrder = -1e9;
+while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
+    sleep 0.25;
+    // Drone just died: the handler decides whether that was the hit. Don't race it.
+    if ([_uavInstance] call _is_dead) then { continue; };
+    private _d = _uavInstance distance _target;
+    if (_d < _best - 3) then { _best = _d; _bestAt = diag_tickTime; };
+    private _reason = switch (true) do {
+        case ([_uavInstance] call _isExternallyControlled): { "taken over by a player (UAV terminal or Zeus)" };
+        case ([_target] call _is_dead): { "target destroyed before the drone got there" };
+        // A target that drives away is chased well past the range it was spotted at.
+        case (_d > _targetDetectionRange * 1.5): {
+            format ["lost target - %1m away (range %2m x 1.5)", round _d, _targetDetectionRange]
+        };
+        case (diag_tickTime - _bestAt > 12): {
+            format ["no progress for 12s (closest %1m, now %2m)", round _best, round _d]
+        };
+        default { "" };
+    };
+    if (_reason != "") then {
+        _state set ["abort", _reason];
+    } else {
+        // Switch only to a clearly closer target - flip-flopping between two
+        // similar ones is worse than either.
+        if (diag_tickTime > _lastLook + 2) then {
+            _lastLook = diag_tickTime;
+            private _new = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange, _targetSides] call _findNearestEnemyOfType;
+            if (!isNull _new && { _new != _target } && { (_uavInstance distance _new) < _d * 0.6 }) then {
+                diag_log format ["FPV_AI_Drones: drone %1 switching to %2 (%3m) from %4 (%5m)",
+                    _uavInstance, _new, round (_uavInstance distance _new), _target, round _d];
+                _target = _new;
+                _state set ["blast", [_new] call _blastRangeOf];
+                _state set ["target", _new];
+                _best = _uavInstance distance _new;
+                _bestAt = diag_tickTime;
+            };
+        };
+        // Keep the AI pilot's own order pointing the same way, so between frames it
+        // isn't pulling against the steering.
+        if (diag_tickTime > _lastOrder + 1) then {
+            _uavInstance doMove (getPosATL _target);
+            _lastOrder = diag_tickTime;
+        };
+    };
+};
 
-	// If it hit something on the way in, the Crocus' own warhead has gone off and
-	// that mod deletes the drone. Hitting the target is exactly when the payload
-	// should go off, so detonate it where the drone last was - unless it crashed
-	// somewhere else entirely.
-	private _droneGone = [_uavInstance] call _is_dead;
-	if (_droneGone && { _lastPos distance _target > 10 }) exitWith {
-		diag_log format ["FPV_AI_Drones: drone lost during terminal dive %1m from %2 - no detonation on machine %3",
-			round (_lastPos distance _target), _target, clientOwner];
-	};
-	private _blastPos = if (_droneGone) then { _lastPos } else { getPosATL _uavInstance };
+// Let the handler finish what it started - an armed charge goes off next frame.
+private _settleBy = diag_tickTime + 3;
+waitUntil { sleep 0.05; (_state get "phase") == "done" || { diag_tickTime > _settleBy } };
 
-	// Split the ammo string and create multiple explosives
-	private _ammoTypes = _customAmmo splitString ",";
-
-	// One line per detonation per machine. More than one for the same drone
-	// means the explosives are being duplicated across machines again.
-	diag_log format ["FPV_AI_Drones: drone %1 detonating %2 on %3 at %4m%5 on machine %6, %7s after acquiring the target",
-		_uavInstance, _ammoTypes, _target, round (_blastPos distance _target),
-		["", " (drone impacted first)"] select _droneGone, clientOwner, round (diag_tickTime - _acquiredAt)];
-	private _explosives = [];
-
-	{
-		private _explosive = _x createVehicle _blastPos;
-		if (!_droneGone) then { _explosive attachTo [_uavInstance, [0, 0, 0]]; };
-		_explosives pushBack _explosive;
-	} forEach _ammoTypes;
-
-	if (!_droneGone) then {
-		// deleteVehicleCrew is unary. This was written as a binary call with the
-		// drone on the left, which throws - on the detonation path, which is a good
-		// candidate for "the drones explode but nothing dies".
-		deleteVehicleCrew _uavInstance;
-		sleep 0.5;
-	};
-
-	// Detach and detonate all explosives
-	{
-		detach _x;
-		_x setDamage 1;
-	} forEach _explosives;
-
-	if (!isNull _uavInstance) then { _uavInstance setDamage 1; };
+if ((_state get "result") == "detonated") then {
+    // One line per detonation per machine. More than one for the same drone
+    // means the explosives are being duplicated across machines again.
+    diag_log format ["FPV_AI_Drones: drone %1 detonating %2 on %3 at %4m%5 on machine %6, %7s after acquiring the target",
+        _uavName, _state get "ammo", _target, round ((_state get "blastPos") vectorDistance (getPosASL _target)),
+        ["", " (drone impacted first)"] select (_state get "impacted"), clientOwner, (diag_tickTime - _acquiredAt) toFixed 1];
+} else {
+    diag_log format ["FPV_AI_Drones: drone %1 broke off its attack run: %2", _uavName, _state get "result"];
 };
 
 // At the end of the script, ensure cleanup

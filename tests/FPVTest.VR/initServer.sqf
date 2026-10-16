@@ -101,19 +101,35 @@ FPVT_fnc_await = {
     private _start = time;
     private _deadline = time + _timeout;
     private _droneGoneAt = -1;
+    // Fail fast: if the drone hasn't got 5 m closer to its target for 30 s (after 20 s
+    // for takeoff), this attempt is going nowhere - stop instead of sitting out the timeout.
+    private _best = 1e9;
+    private _bestAt = time;
+    private _stalled = false;
     while {
         !([_target] call _doneFn)
         && { _droneGoneAt < 0 || { time < _droneGoneAt + 4 } }
         && { time < _deadline }
+        && { !_stalled }
     } do {
         if (_droneGoneAt < 0 && { !alive _drone }) then { _droneGoneAt = time; };
+        private _aimAt = if (_target isEqualType []) then { (_target select { alive _x }) param [0, objNull] } else { _target };
+        if (alive _drone && { !isNull _aimAt }) then {
+            private _d = _drone distance _aimAt;
+            if (_d < _best - 5) then { _best = _d; _bestAt = time; };
+            if (time - _start > 20 && { time - _bestAt > 30 }) then { _stalled = true; };
+        };
         sleep 0.5;
+    };
+    if (_stalled) then {
+        ["stalled", "INFO", format ["no progress for 30 s (closest %1 m) - stopped early: %2",
+            round _best, missionNamespace getVariable ["FPVT_caption", ""]]] call FPVT_fnc_report;
     };
     if ([_target] call _doneFn) then {
         ["ttk", "INFO", format ["%1s  %2", (time - _start) toFixed 1, missionNamespace getVariable ["FPVT_caption", ""]]] call FPVT_fnc_report;
     };
     sleep 3;   // let the camera hold on the result
-    time >= _deadline
+    (time >= _deadline) || _stalled
 };
 
 // Waits until _drone is within _radius (2D) of _pos, or the timeout. Returns whether it got there.
@@ -146,6 +162,7 @@ FPVT_AP = [
 // Which stage to start from - tests\run_tests.ps1 -StartStage writes this file.
 FPVT_startStage = 1;
 FPVT_stages = [];   // non-empty: run exactly these stages (run_tests.ps1 -Stages / -Quick)
+FPVT_bench = 0;     // > 0: only the speed bench, this many rounds (run_tests.ps1 -Bench)
 if (fileExists "testconfig.sqf") then { call compile preprocessFileLineNumbers "testconfig.sqf"; };
 FPVT_fnc_runStage = { params ["_n"]; if (FPVT_stages isEqualTo []) then { _n >= FPVT_startStage } else { _n in FPVT_stages } };
 
@@ -170,6 +187,68 @@ if (isNil "FPV_AI_Drones_fnc_initModule") exitWith {
     ["START", "FAIL", "FPV_AI_Drones_fnc_initModule is not defined - is the mod loaded on the server?"] call FPVT_fnc_report;
     diag_log text "FPV_TEST|SUMMARY|0/1";
     FPVT_finished = true; publicVariable "FPVT_finished";
+};
+
+// --- Speed bench (run_tests.ps1 -Bench N) -----------------------------------
+// The same two attacks - a parked tank and a car crossing in front of the drone
+// at ~70 km/h - at close, medium and far range, N passes. Nothing else runs.
+// Drones start on the ground, like a drone placed in the editor. The far range
+// is past the default 200 m detection range, so that module gets 500 m.
+// Compare the ttk lines (and the drones' "s after acquiring") between changes.
+if (FPVT_bench > 0) then {
+    FPVT_stages = [-1];   // no regular stages
+    FPV_AI_Drones_debug = true;
+    private _cleanup = { params ["_veh"]; if (!isNull _veh) then { { deleteVehicle _x } forEach crew _veh; deleteVehicle _veh; }; };
+    for "_pass" from 1 to FPVT_bench do {
+        {
+            _x params ["_label", "_x0", "_tankDist", "_crossOffset", "_range"];
+            private _settings = FPVT_AT + [["TargetDetectionRange", _range]];
+
+            // A: parked tank.
+            private _d = [[_x0, 1500, 0]] call FPVT_fnc_spawnDrone;
+            _d setVariable ["FPV_AI_Drones_managed", true, true];
+            private _t = [[_x0, 1500 + _tankDist, 0]] call FPVT_fnc_spawnTank;
+            private _l = [[_x0 + 8, 1500, 0], _settings] call FPVT_fnc_module;
+            [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+            [format ["Bench %1/%2 %3 - parked tank %4 m away", _pass, FPVT_bench, _label, _tankDist], _d, _t] call FPVT_fnc_show;
+            private _to = [_d, _t, FPVT_fnc_vehicleDone, 90] call FPVT_fnc_await;
+            [format ["bench %1 %2 parked tank %3m", _pass, _label, _tankDist], [_t] call FPVT_fnc_vehicleDone,
+                format ["damage=%1 crewAlive=%2 timedOut=%3", damage _t toFixed 2, {alive _x} count crew _t, _to]] call FPVT_fnc_check;
+            [_t] call _cleanup; [_d] call _cleanup; deleteVehicle _l;
+
+            // B: car crossing _crossOffset m in front of the drone, northbound at ~70 km/h,
+            // starting 100 m before it comes into detection range so it's at speed by then.
+            _d = [[_x0, 4500, 0]] call FPVT_fnc_spawnDrone;
+            _d setVariable ["FPV_AI_Drones_managed", true, true];
+            private _carY = 4500 - (sqrt ((_range ^ 2) - (_crossOffset ^ 2))) - 100;
+            private _car = createVehicle ["O_MRAP_02_F", [_x0 + _crossOffset, _carY, 0], [], 0, "NONE"];
+            _car setDir 0;
+            createVehicleCrew _car;
+            private _cg = group effectiveCommander _car;
+            _cg setBehaviour "CARELESS";
+            _cg setCombatMode "BLUE";
+            _cg setSpeedMode "FULL";
+            { _x disableAI "AUTOTARGET"; _x disableAI "TARGET"; } forEach units _cg;
+            _car limitSpeed 70;   // km/h
+            _cg addWaypoint [[_x0 + _crossOffset, 7900, 0], 0];
+            _l = [[_x0 + 8, 4500, 0], _settings] call FPVT_fnc_module;
+            [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+            [format ["Bench %1/%2 %3 - car crossing %4 m out at ~70 km/h", _pass, FPVT_bench, _label, _crossOffset], _d, _car] call FPVT_fnc_show;
+            FPVT_moverSpeed = -1;
+            private _watch = [_car] spawn { params ["_m"]; while { alive _m } do { FPVT_moverSpeed = speed _m; sleep 0.5; }; };
+            _to = [_d, _car, FPVT_fnc_vehicleDone, 90] call FPVT_fnc_await;
+            terminate _watch;
+            [format ["bench %1 %2 crossing car %3m", _pass, _label, _crossOffset], [_car] call FPVT_fnc_vehicleDone,
+                format ["damage=%1 crewAlive=%2 carSpeedBeforeHit=%3km/h timedOut=%4",
+                    damage _car toFixed 2, {alive _x} count crew _car, round FPVT_moverSpeed, _to]] call FPVT_fnc_check;
+            [_car] call _cleanup; [_d] call _cleanup; deleteVehicle _l;
+        } forEach [
+            // label     column  tank  crossing  detection range
+            ["close",    2500,    60,     60,     200],
+            ["medium",   4000,   150,    120,     200],
+            ["far",      5500,   400,    300,     500]
+        ];
+    };
 };
 
 private ["_drone", "_tank", "_logic", "_timedOut"];
@@ -455,15 +534,19 @@ FPVT_fnc_sideCase = {
         side _d, _sides, _hitType, _hitDone, damage _hit toFixed 2, _ignoreType, damage _ignore toFixed 2, { !alive _x } count crew _ignore, _to]] call FPVT_fnc_check;
 };
 
-// 10a: Independent drone, Independent friendly to BLUFOR and hostile to OPFOR.
-[1, 0] call FPVT_fnc_guerRelations;
-["10a Independent drone hits OPFOR, ignores friendly BLUFOR", "Stage 10/11 - Independent drone: hit OPFOR, ignore the closer friendly BLUFOR tank",
-    "I_Crocus_AT", [1500, 6000, 0], "ENEMIES", "O_MBT_02_cannon_F", [1600, 6150, 0], "B_MBT_01_cannon_F", [1450, 6110, 0]] call FPVT_fnc_sideCase;
+// 10a/10b check the default (mission relations), which already worked in v1.1 -
+// full suite only, so quick runs (-Quick / -Stages) spend their time on 10c.
+if (FPVT_stages isEqualTo []) then {
+    // 10a: Independent drone, Independent friendly to BLUFOR and hostile to OPFOR.
+    [1, 0] call FPVT_fnc_guerRelations;
+    ["10a Independent drone hits OPFOR, ignores friendly BLUFOR", "Stage 10/11 - Independent drone: hit OPFOR, ignore the closer friendly BLUFOR tank",
+        "I_Crocus_AT", [1500, 6000, 0], "ENEMIES", "O_MBT_02_cannon_F", [1600, 6150, 0], "B_MBT_01_cannon_F", [1450, 6110, 0]] call FPVT_fnc_sideCase;
 
-// 10b: same drone type, relations flipped.
-[0, 1] call FPVT_fnc_guerRelations;
-["10b relations flipped: hits BLUFOR, ignores friendly OPFOR", "Stage 10/11 - relations flipped: hit BLUFOR, ignore the closer friendly OPFOR tank",
-    "I_Crocus_AT", [2500, 6000, 0], "ENEMIES", "B_MBT_01_cannon_F", [2600, 6150, 0], "O_MBT_02_cannon_F", [2450, 6110, 0]] call FPVT_fnc_sideCase;
+    // 10b: same drone type, relations flipped.
+    [0, 1] call FPVT_fnc_guerRelations;
+    ["10b relations flipped: hits BLUFOR, ignores friendly OPFOR", "Stage 10/11 - relations flipped: hit BLUFOR, ignore the closer friendly OPFOR tank",
+        "I_Crocus_AT", [2500, 6000, 0], "ENEMIES", "B_MBT_01_cannon_F", [2600, 6150, 0], "O_MBT_02_cannon_F", [2450, 6110, 0]] call FPVT_fnc_sideCase;
+};
 
 // 10c: explicit side overrides relations - a BLUFOR drone set to Independent only
 // hits a (friendly by default) Independent tank and ignores a closer hostile OPFOR one.
