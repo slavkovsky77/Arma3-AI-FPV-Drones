@@ -103,13 +103,29 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Target Source | `vehicles` | `allUnits` | Which pool to scan. Use `allUnits` for infantry |
 | Target Sides | Mission's enemies | Mission's enemies | Who to attack: the mission's side relations (default), one side only (OPFOR / BLUFOR / Independent), or everyone except its own side. Civilians are never targets |
 | Enable Chat Messages | off | off | Drone init/debug messages in system chat |
-| Initial Search Height | 30 | 50 | Cruise height while hunting (m) |
-| Target Detection Range | 200 | 200 | Acquisition range, and the range at which a target is dropped |
-| Attack Distance | 10 | 30 | 3D distance at which the attack run begins (m) |
-| Attack Distance 2D | 3 | 8 | Horizontal tolerance for the run (m) |
-| Attack Height | 5 | 8 | Height held during the run; the drone dives below it before detonating |
+| Initial Search Height | 30 | 50 | Cruise height while hunting and flying waypoints (m); also the most the attack run climbs above its target |
+| Target Detection Range | 200 | 200 | Acquisition range. A target is chased until it's 1.5x this far away |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
+
+Since v1.2, **Attack Distance, Attack Distance 2D, Attack Height** and the delay / stuck settings
+no longer change anything: the attack run is flown by the script (see below). They're still
+accepted so existing missions and scripts keep working.
+
+### How an attack run works (v1.2)
+
+Once a drone has a target, an `EachFrame` handler flies it - not the AI pilot, which slows down
+near every move point and could not catch a moving vehicle:
+
+- ~50 m/s for anti-vehicle drones, ~40 m/s for anti-personnel, steered every frame
+- aims where a moving target will be (lead), not where it is
+- glides down at about 1:3 to a dive entry point 30 m out; if a building or trees block the
+  straight line down, the entry point is raised until it doesn't (steep dive over cover)
+- the charge goes off on the surface it's about to hit (or within 3 m of the target's centre)
+- gives up only if the target is destroyed, is 1.5x detection range away, or the drone makes no
+  progress for 12 s - then it searches again
+
+Waypoints (e.g. given in Zeus) are flown the same way at ~35 m/s while there's no target.
 
 With the default "Mission's enemies", targeting uses `BIS_fnc_sideIsEnemy`, so it respects the mission's actual side relations —
 independent/resistance works, not just BLUFOR vs OPFOR.
@@ -189,10 +205,24 @@ attack, and every check is written to the RPT as `FPV_TEST|<check>|PASS/FAIL|<de
 .\tests\run_tests.ps1 -KeepOpen        # stay in game afterwards - press Y for Zeus
 ```
 
+```powershell
+.	estsun_tests.ps1 -Bench 1                  # attack-speed bench only (MP), ~5 min
+.	estsun_tests.ps1 -Bench 1 -Map Stratis     # same attacks at random spots on real terrain
+.	estsun_tests.ps1 -Quick                    # the attack-related stages (1, 2, 7, 10, 11)
+```
+
+The bench is for tuning the attack run: a parked tank and a car crossing at ~70 km/h at close
+(60 m), medium (150 m) and far (400 m, detection range 500) range, a tank parked behind a building,
+and an AP drone vs a squad. It prints the time-to-kill per attack; the drone's own log line says how
+long it took from acquiring the target. With `FPV_AI_Drones_debug = true` (set by the bench) every
+attack run also writes a flight trace to the RPT.
+
 Stages: empty Eden-placed drone (1), AP vs infantry (2), Zeus-style attached module plus a
 same-class drone that must be left alone (3), module placed on the ground near a drone (4), module
 with no drone (5), plain-drone waypoint baselines (6, info only), managed drone sent by waypoint (7),
-module started through the Zeus code path from the player's machine (8).
+module started through the Zeus code path from the player's machine (8), Independent drone (9),
+Target Sides (10), tank driving past (11). An attempt that makes no progress for 30 s is stopped
+early instead of running into its timeout.
 
 Only CBA and the Crocus drones are loaded - no AI mods, which change drone behaviour. Singleplayer
 pauses when the game window loses focus, so keep it in front during an SP run.

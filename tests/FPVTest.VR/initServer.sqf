@@ -189,13 +189,104 @@ if (isNil "FPV_AI_Drones_fnc_initModule") exitWith {
     FPVT_finished = true; publicVariable "FPVT_finished";
 };
 
+// --- Speed bench on real terrain (run_tests.ps1 -Bench N -Map Stratis) --------
+// The same two attacks at random spots on the map - hills, trees, houses - since
+// VR is flat and empty. Per pass: 3 parked tanks 120-250 m away and 3 cars driving
+// past from 280-350 m out. Each line logs the height difference and how many
+// obstacles sit on the straight line from 30 m over the drone to the target.
+if (FPVT_bench > 0 && { worldName != "VR" }) then {
+    FPVT_stages = [-1];
+    FPV_AI_Drones_debug = true;
+    private _cleanup = { params ["_veh"]; if (!isNull _veh) then { { deleteVehicle _x } forEach crew _veh; deleteVehicle _veh; }; };
+    private _settings = FPVT_AT + [["TargetDetectionRange", 300]];
+    // A random flat-enough spot on land, [] if there's none.
+    private _land = {
+        params ["_center", "_min", "_max"];
+        private _p = [_center, _min, _max, 8, 0, 0.3, 0, [], [[-1, -1, 0], [-1, -1, 0]]] call BIS_fnc_findSafePos;
+        if ((_p select 0) < 0) then { [] } else { [_p select 0, _p select 1, 0] }
+    };
+    // Prefer spots among trees and houses - open fields are the easy case.
+    private _cover = {
+        params ["_center", "_min", "_max"];
+        private _best = (selectBestPlaces [_center, _max, "forest + trees + houses", 25, 15]) select {
+            private _d = _center distance2D (_x select 0);
+            _d >= _min && { _d <= _max }
+        };
+        private _spot = if (_best isEqualTo []) then { _center } else { (selectRandom _best) select 0 };
+        if (_best isEqualTo []) then { [_center, _min, _max] call _land } else { [_spot, 0, 40] call _land }
+    };
+    private _describe = {
+        params ["_from", "_to", ["_ignore", objNull]];
+        private _obstacles = lineIntersectsSurfaces [AGLToASL (_from vectorAdd [0, 0, 30]), AGLToASL (_to vectorAdd [0, 0, 2]), _ignore, objNull, true, 20, "GEOM", "NONE"];
+        format ["%1 m away, %2 m %3, %4 obstacles on the line", round (_from distance2D _to),
+            round abs ((getTerrainHeightASL _to) - (getTerrainHeightASL _from)),
+            ["lower", "higher"] select ((getTerrainHeightASL _to) > (getTerrainHeightASL _from)), count _obstacles]
+    };
+    private _mapCenter = [worldSize / 2, worldSize / 2, 0];
+    for "_pass" from 1 to FPVT_bench do {
+        for "_i" from 1 to 3 do {
+            // A: parked tank.
+            private _p = [_mapCenter, 0, worldSize / 2] call _land;
+            private _tp = if (_p isEqualTo []) then { [] } else { [_p, 120, 250] call _cover };
+            if (_tp isEqualTo []) then {
+                ["terrain", "INFO", "no spot found for a parked-tank trial - skipped"] call FPVT_fnc_report;
+            } else {
+                private _d = [_p] call FPVT_fnc_spawnDrone;
+                _d setVariable ["FPV_AI_Drones_managed", true, true];
+                private _t = [_tp] call FPVT_fnc_spawnTank;
+                private _l = [_p vectorAdd [8, 0, 0], _settings] call FPVT_fnc_module;
+                [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+                private _desc = [_p, _tp, _t] call _describe;
+                [format ["Terrain %1.%2 - parked tank %3", _pass, _i, _desc], _d, _t] call FPVT_fnc_show;
+                private _to = [_d, _t, FPVT_fnc_vehicleDone, 90] call FPVT_fnc_await;
+                [format ["terrain %1.%2 parked tank (%3) at %4", _pass, _i, _desc, mapGridPosition _tp], [_t] call FPVT_fnc_vehicleDone,
+                    format ["damage=%1 crewAlive=%2 timedOut=%3", damage _t toFixed 2, {alive _x} count crew _t, _to]] call FPVT_fnc_check;
+                [_t] call _cleanup; [_d] call _cleanup; deleteVehicle _l;
+            };
+
+            // B: car driving past - from 280-350 m out to a spot beyond the drone.
+            _p = [_mapCenter, 0, worldSize / 2] call _land;
+            private _start = if (_p isEqualTo []) then { [] } else { [_p, 280, 350] call _land };
+            private _dest = if (_start isEqualTo []) then { [] } else { [_p vectorAdd ((_p vectorDiff _start) vectorMultiply 1.5), 0, 150] call _land };
+            if (_dest isEqualTo []) then {
+                ["terrain", "INFO", "no spot found for a moving-car trial - skipped"] call FPVT_fnc_report;
+            } else {
+                private _d = [_p] call FPVT_fnc_spawnDrone;
+                _d setVariable ["FPV_AI_Drones_managed", true, true];
+                private _car = createVehicle ["O_MRAP_02_F", _start, [], 0, "NONE"];
+                _car setDir (_start getDir _dest);
+                createVehicleCrew _car;
+                private _cg = group effectiveCommander _car;
+                _cg setBehaviour "CARELESS";
+                _cg setCombatMode "BLUE";
+                _cg setSpeedMode "FULL";
+                { _x disableAI "AUTOTARGET"; _x disableAI "TARGET"; } forEach units _cg;
+                _car limitSpeed 70;
+                _cg addWaypoint [_dest, 0];
+                private _l = [_p vectorAdd [8, 0, 0], _settings] call FPVT_fnc_module;
+                [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+                private _desc = [_p, _start, _car] call _describe;
+                [format ["Terrain %1.%2 - car driving past, starts %3", _pass, _i, _desc], _d, _car] call FPVT_fnc_show;
+                FPVT_moverSpeed = -1;
+                private _watch = [_car] spawn { params ["_m"]; while { alive _m } do { FPVT_moverSpeed = speed _m; sleep 0.5; }; };
+                private _to = [_d, _car, FPVT_fnc_vehicleDone, 90] call FPVT_fnc_await;
+                terminate _watch;
+                [format ["terrain %1.%2 moving car (starts %3) at %4", _pass, _i, _desc, mapGridPosition _p], [_car] call FPVT_fnc_vehicleDone,
+                    format ["damage=%1 crewAlive=%2 carSpeedBeforeHit=%3km/h timedOut=%4",
+                        damage _car toFixed 2, {alive _x} count crew _car, round FPVT_moverSpeed, _to]] call FPVT_fnc_check;
+                [_car] call _cleanup; [_d] call _cleanup; deleteVehicle _l;
+            };
+        };
+    };
+};
+
 // --- Speed bench (run_tests.ps1 -Bench N) -----------------------------------
 // The same two attacks - a parked tank and a car crossing in front of the drone
 // at ~70 km/h - at close, medium and far range, N passes. Nothing else runs.
 // Drones start on the ground, like a drone placed in the editor. The far range
 // is past the default 200 m detection range, so that module gets 500 m.
 // Compare the ttk lines (and the drones' "s after acquiring") between changes.
-if (FPVT_bench > 0) then {
+if (FPVT_bench > 0 && { worldName == "VR" }) then {
     FPVT_stages = [-1];   // no regular stages
     FPV_AI_Drones_debug = true;
     private _cleanup = { params ["_veh"]; if (!isNull _veh) then { { deleteVehicle _x } forEach crew _veh; deleteVehicle _veh; }; };

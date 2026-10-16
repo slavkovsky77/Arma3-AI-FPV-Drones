@@ -23,6 +23,7 @@ param(
     [int[]]$Stages = @(),   # run exactly these stages, e.g. -Stages 1,7,11
     [switch]$Quick,         # speed-iteration set: the attack-run stages (1,2,7,10,11), no pickup/Zeus stages
     [ValidateRange(0, 20)] [int]$Bench = 0,   # just the attack-speed bench, this many rounds (default -Mode MP)
+    [string]$Map = "VR",    # world to play the test mission on, e.g. -Map Stratis (the bench then uses random real-terrain spots)
     [switch]$KeepOpen,
     [switch]$Fullscreen,   # for hands-on sessions (Zeus needs the mouse captured); default is windowed
     [switch]$ServerOnly,   # MP: start just the server; join it yourself from the normal Arma launcher
@@ -36,6 +37,7 @@ $ErrorActionPreference = "Stop"
 
 $RepoDir   = Split-Path $PSScriptRoot -Parent
 $Mission   = Join-Path $PSScriptRoot "FPVTest.VR"
+$MissionName = "FPVTest.$Map"   # the folder suffix picks the world
 # CBA is required by the Crocus drone mod (ArmaFPV_Data -> cba_settings), not by FPV AI Drones itself.
 $Mods      = "!Workshop\@CBA_A3;x\FPV Drone Crocus With Settings;x\FPV_AI_Drones"   # relative to $ArmaDir
 $WorkDir   = Join-Path $env:TEMP "fpv_ai_drones_test"     # server profile, config and RPT
@@ -108,7 +110,7 @@ function Invoke-SpRun {
     # in the profile's missions folder is silently ignored (the game just sits
     # at the main menu). SP also needs a real player unit (isPlayer) rather than
     # an MP slot (isPlayable).
-    $spMission = Join-Path $ArmaDir "Missions\FPVTest.VR"
+    $spMission = Join-Path $ArmaDir "Missions\$MissionName"
     if (Test-Path $spMission) { Remove-Item $spMission -Recurse -Force }
     New-Item -ItemType Directory -Force (Split-Path $spMission) | Out-Null
     Copy-Item $Mission $spMission -Recurse
@@ -117,7 +119,7 @@ function Invoke-SpRun {
     (Get-Content $sqm -Raw).Replace("isPlayable=1;", "isPlayer=1;") | Set-Content -Encoding ASCII -NoNewline $sqm
 
     $since = Get-Date
-    Start-Game @("-init=playMission['','FPVTest.VR',true]")
+    Start-Game @("-init=playMission['','$MissionName',true]")
     $result = Watch-Run "SP" {
         Get-ChildItem $ClientLogs -Filter "arma3_x64_*.rpt" -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -ge $since } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -127,7 +129,7 @@ function Invoke-SpRun {
 
 function Invoke-MpRun {
     Write-Host "== Multiplayer run (local dedicated server on port $Port) ==" -ForegroundColor Cyan
-    $mpMission = Join-Path $ArmaDir "MPMissions\FPVTest.VR"
+    $mpMission = Join-Path $ArmaDir "MPMissions\$MissionName"
     if (Test-Path $mpMission) { Remove-Item $mpMission -Recurse -Force }
     New-Item -ItemType Directory -Force (Split-Path $mpMission) | Out-Null
     Copy-Item $Mission $mpMission -Recurse
@@ -148,7 +150,7 @@ class Missions
 {
     class FPVTest
     {
-        template = "FPVTest.VR";
+        template = "$MissionName";
         difficulty = "Regular";
     };
 };
