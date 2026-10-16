@@ -265,6 +265,18 @@ if (FPVT_bench > 0) then {
         [format ["bench %1 cover parked tank behind building", _pass], [_t] call FPVT_fnc_vehicleDone,
             format ["damage=%1 crewAlive=%2 timedOut=%3", damage _t toFixed 2, {alive _x} count crew _t, _to]] call FPVT_fnc_check;
         [_t] call _cleanup; [_d] call _cleanup; deleteVehicle _l; deleteVehicle _wall;
+
+        // D: Anti-Personnel drone vs a 4-man squad 150 m away.
+        _d = [[7000, 4500, 0], "B_Crocus_AP"] call FPVT_fnc_spawnDrone;
+        _d setVariable ["FPV_AI_Drones_managed", true, true];
+        private _squad = [[7000, 4650, 0], 4] call FPVT_fnc_spawnSquad;
+        _l = [[7008, 4500, 0], FPVT_AP] call FPVT_fnc_module;
+        [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+        [format ["Bench %1/%2 infantry - AP drone vs 4-man squad 150 m away", _pass, FPVT_bench], _d, _squad select 0] call FPVT_fnc_show;
+        _to = [_d, _squad, { params ["_units"]; ({alive _x} count _units) == 0 }, 90] call FPVT_fnc_await;
+        [format ["bench %1 infantry squad 150m", _pass], ({!alive _x} count _squad) > 0,
+            format ["killed %1/4 timedOut=%2", {!alive _x} count _squad, _to]] call FPVT_fnc_check;
+        { deleteVehicle _x } forEach _squad; [_d] call _cleanup; deleteVehicle _l;
     };
 };
 

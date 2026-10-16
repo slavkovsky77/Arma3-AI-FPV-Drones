@@ -276,7 +276,7 @@ diag_log format ["FPV_AI_Drones: drone %1 acquired %2 (%3) at %4m", _uavInstance
 // tick - which is how the old terminal dive overshot or hit the hull first.
 
 // m/s. Infantry are small and change direction, so AP drones fly a bit slower.
-private _attackSpeed = if ("Man" in _unitKinds) then { 32 } else { 50 };
+private _attackSpeed = if ("Man" in _unitKinds) then { 40 } else { 50 };
 
 // Fallback trigger radius around the target's centre mass. Vehicles are normally
 // set off on contact instead (see the trigger in _guide): a radius big enough for a
@@ -369,10 +369,10 @@ private _guide = {
     };
     // ... or about to hit something right next to the target (its hull, a wall):
     // then the charge goes off right on the surface it's about to hit. "About to" is
-    // one frame's travel plus 1 m for the drone's own size - its body used to clip a
-    // tank's hull while the line from its centre still passed over it.
+    // two frames' travel plus 1 m for the drone's own size: with less, at 50 m/s its
+    // body still hit the hull between two checks (traced: skin 2.6 m away, then impact).
     if (_fire isEqualTo [] && { (_p vectorDistance _tPos) < 15 }) then {
-        private _reach = ((vectorMagnitude _v) * _dt) + 1;
+        private _reach = ((vectorMagnitude _v) * _dt * 2) + 1;
         private _hits = lineIntersectsSurfaces [_p, _p vectorAdd ((vectorNormalized _v) vectorMultiply _reach), _uav, objNull, true, 1, "FIRE", "GEOM"];
         // The target's skin straight towards its centre can be nearer than along the path.
         if (_hits isEqualTo []) then {
@@ -469,7 +469,7 @@ private _guide = {
     if (missionNamespace getVariable ["FPV_AI_Drones_debug", false]) then {
         private _n = (_s getOrDefault ["frames", 0]) + 1;
         _s set ["frames", _n];
-        if (_n <= 5 || { diag_tickTime > (_s getOrDefault ["traceAt", 0]) }) then {
+        if (_n <= 5 || { (_p vectorDistance _tPos) < 20 } || { diag_tickTime > (_s getOrDefault ["traceAt", 0]) }) then {
             _s set ["traceAt", diag_tickTime + 0.5];
             diag_log format ["FPV_AI_Drones: trace %1 f%2 dt=%3 agl=%4 v=%5 (%6 m/s) vDes=%7 d3=%8 d2aim=%9 termH=%10 clear=%11 popUp=%12",
                 _uav, _n, _dt toFixed 3, ((_p select 2) - _ground) toFixed 1, _v apply { _x toFixed 1 }, (vectorMagnitude _v) toFixed 1,
