@@ -1,0 +1,12 @@
+author = "slavkovsky77";
+onLoadName = "FPV AI Drones - v1.2 showcase";
+onLoadMission = "Scripted showcase for the trailer (tests\record_showcase.py).";
+briefing = 0;
+debriefing = 0;
+enableDebugConsole = 2;
+class Header
+{
+    gameType = "Sandbox";
+    minPlayers = 1;
+    maxPlayers = 1;
+};
