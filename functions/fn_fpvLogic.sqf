@@ -36,7 +36,7 @@ params [
 // tester found the drone weightless ("switches to the next waypoint instantly"):
 // v1.2 turned at 26 m/s2 on waypoints and 60 m/s2 in the attack run.
 private _cruiseSpeed = if (_cruiseSpeedKmh > 0) then { (_cruiseSpeedKmh / 3.6) max 3 } else { 35 };
-if (_brakingTime <= 0) then { _brakingTime = 1.5 };   // same default as the modules' setting (config.cpp)
+if (_brakingTime <= 0) then { _brakingTime = 2 };   // same default as the modules' setting (config.cpp)
 _brakingTime = (_brakingTime max 0.2) min 20;
 _hitChance = if (_hitChance < 0) then { 100 } else { (_hitChance max 0) min 100 };
 
@@ -410,8 +410,17 @@ private _attackSpeed = if (_attackSpeedKmh > 0) then { (_attackSpeedKmh / 3.6) m
 private _miss = [];
 if ((random 100) >= _hitChance) then {
     private _blastRadius = 0;
-    { _blastRadius = _blastRadius max getNumber (configFile >> "CfgAmmo" >> _x >> "indirectHitRange"); } forEach (_customAmmo splitString ", ");
-    private _off = ((_blastRadius * 2.5) max 6) + random 4;
+    private _reach = 0;
+    {
+        private _r = getNumber (configFile >> "CfgAmmo" >> _x >> "indirectHitRange");
+        _blastRadius = _blastRadius max _r;
+        // Where the blast is down to about 1 point of damage: it falls off with
+        // (radius / distance)^4 past its radius. A soldier's armour is so thin that a
+        // demo charge (1000, 3 m) still killed 3 of 4 from 9-11 m - so against infantry
+        // a miss lands out there instead: ~17 m for the demo charge.
+        _reach = _reach max (_r * ((getNumber (configFile >> "CfgAmmo" >> _x >> "indirectHit")) max 1) ^ 0.25);
+    } forEach (_customAmmo splitString ", ");
+    private _off = ([(_blastRadius * 2.5) max 6, _reach] select (_target isKindOf "Man")) + random 4;
     private _tp = getPosASL _target;
     private _toT = _tp vectorDiff (getPosASL _uavInstance);
     private _fwd = vectorNormalized [_toT select 0, _toT select 1, 0];
@@ -440,15 +449,52 @@ private _blastRange = 3;
 // Puts the payload at _posASL; the handler sets it off on the next frame.
 // Runs inside the handler, so nothing in here may sleep.
 private _arm = {
-    params ["_s", "_posASL", "_impacted"];
+    params ["_s", "_posASL", "_impacted", ["_aimASL", []]];
+    // A warhead payload (rocket, missile or shell ammo - an RPG warhead, or the Crocus's
+    // own FPV_RPG42_AT) is fired the last 1.5 m along the drone's flight path at 150 m/s,
+    // so it strikes like the real round: a shaped charge works along its axis only, and
+    // its penetrator needs the round's speed. A drone that misses drives it into the
+    // ground. Set off where it stood (triggerAmmo, as the Crocus mod does) the warheads
+    // barely scratched a tank (damage 0.06-0.11, crew alive).
+    // Charges and mines just go off where they are (setDamage, next frame).
+    // At the target when the drone got to it (_aimASL): fired along the flight path a
+    // warhead went where a crossing car was going to be, and into the road beside it.
+    private _dir = if (_aimASL isNotEqualTo [] && { (_aimASL vectorDistance _posASL) > 0.3 }) then {
+        vectorNormalized (_aimASL vectorDiff _posASL)
+    } else { vectorNormalized (_s getOrDefault ["vSet", [0, 0, -1]]) };
+    if (_dir isEqualTo [0, 0, 0]) then { _dir = [0, 0, -1]; };
+    private _up = if (abs (_dir select 2) < 0.99) then { vectorNormalized ((_dir vectorCrossProduct [0, 0, 1]) vectorCrossProduct _dir) } else { [0, 1, 0] };
+    if ((_up select 2) < 0) then { _up = _up vectorMultiply -1; };
     private _charges = (_s get "ammo") apply {
         private _c = createVehicle [_x, ASLToAGL _posASL, [], 0, "CAN_COLLIDE"];
         _c setPosASL _posASL;
+        if ((getText (configFile >> "CfgAmmo" >> _x >> "simulation")) in ["shotRocket", "shotMissile", "shotShell", "shotSubmunitions", "shotBullet"]) then {
+            _c setPosASL (_posASL vectorDiff (_dir vectorMultiply 1.5));
+            _c setVectorDirAndUp [_dir, _up];
+            _c setVelocity (_dir vectorMultiply 150);
+            _c setVariable ["FPV_AI_Drones_warhead", true];
+            if (missionNamespace getVariable ["FPV_AI_Drones_debug", false]) then {
+                private _t = _s get "target";
+                diag_log format ["FPV_AI_Drones: trace warhead %1 launched at %2 dir %3 v %4, target %5 centre %6",
+                    typeOf _c, (getPosASL _c) apply { _x toFixed 1 }, _dir apply { _x toFixed 2 }, (velocity _c) apply { _x toFixed 0 }, typeOf _t, (getPosASL _t) apply { _x toFixed 1 }];
+                _c addEventHandler ["HitPart", { params ["_w", "_hit", "", "_pos", "_vel"];
+                    diag_log format ["FPV_AI_Drones: trace warhead HitPart %1 at %2 v %3", typeOf _hit, _pos apply { _x toFixed 1 }, _vel apply { _x toFixed 0 }]; }];
+                _c addEventHandler ["Explode", { params ["_w", "_pos", "_vel"];
+                    diag_log format ["FPV_AI_Drones: trace warhead Explode at %1 v %2", _pos apply { _x toFixed 1 }, _vel apply { _x toFixed 0 }]; }];
+                _c addEventHandler ["SubmunitionCreated", { params ["_w", "_sub"];
+                    diag_log format ["FPV_AI_Drones: trace warhead penetrator %1 at %2 v %3", typeOf _sub, (getPosASL _sub) apply { _x toFixed 1 }, (velocity _sub) apply { _x toFixed 0 }]; }];
+            };
+        };
         _c
     };
     // deleteVehicleCrew is unary. It used to be written as a binary call, which
     // threw on this path - a candidate for "the drones explode but nothing dies".
     if (!isNull (_s get "uav")) then { deleteVehicleCrew (_s get "uav"); };
+    // A warhead in flight would hit the drone it starts behind: the drone goes now (as
+    // the Crocus mod removes its drone when it fires its own warhead).
+    if (!isNull (_s get "uav") && { (_charges findIf { _x getVariable ["FPV_AI_Drones_warhead", false] }) >= 0 }) then {
+        deleteVehicle (_s get "uav");
+    };
     _s set ["charges", _charges];
     _s set ["blastPos", _posASL];
     _s set ["impacted", _impacted];
@@ -462,7 +508,12 @@ private _guide = {
     private _target = _s get "target";
 
     if ((_s get "phase") == "armed") exitWith {
-        { _x setDamage 1; } forEach (_s get "charges");
+        {
+            if (_x getVariable ["FPV_AI_Drones_warhead", false]) then {
+                // In flight - it goes off on impact. If it somehow hasn't in a second, set it off.
+                [_x] spawn { params ["_w"]; sleep 1; if (!isNull _w) then { triggerAmmo _w; }; };
+            } else { _x setDamage 1; };
+        } forEach (_s get "charges");
         if (!isNull _uav) then { _uav setDamage 1; };
         _s set ["result", "detonated"];
         _s set ["phase", "done"];
@@ -522,7 +573,8 @@ private _guide = {
 
     // --- trigger: in blast range, or will be by next frame, ...
     private _fire = [];
-    if ((_p vectorDistance _tPos) <= _blast + ((vectorMagnitude _v) * _dt)) then { _fire = _p; };
+    private _fireAim = [];   // where a warhead payload is pointed - see _arm
+    if ((_p vectorDistance _tPos) <= _blast + ((vectorMagnitude _v) * _dt)) then { _fire = _p; _fireAim = _tPos; };
     // ... or passed through it since last frame (low frame rate), ...
     if (_fire isEqualTo []) then {
         private _seg = _p vectorDiff _last;
@@ -530,7 +582,7 @@ private _guide = {
         if (_segLen2 > 0.01) then {
             private _u = ((((_tPos vectorDiff _last) vectorDotProduct _seg) / _segLen2) max 0) min 1;
             private _closest = _last vectorAdd (_seg vectorMultiply _u);
-            if ((_closest vectorDistance _tPos) <= _blast) then { _fire = _closest; };
+            if ((_closest vectorDistance _tPos) <= _blast) then { _fire = _closest; _fireAim = _tPos; };
         };
     };
     // ... or about to hit something right next to the target (its hull, a wall):
@@ -545,11 +597,14 @@ private _guide = {
             _hits = (lineIntersectsSurfaces [_p, _tPos, _uav, objNull, true, 1, "FIRE", "GEOM"]) select { ((_x select 0) vectorDistance _p) < _reach };
         };
         if (_hits isNotEqualTo []) then {
-            (_hits select 0) params ["_hitPos", "_hitNormal"];
+            (_hits select 0) params ["_hitPos", "_hitNormal", "_hitObj", "_hitParent"];
             _fire = _hitPos vectorAdd (_hitNormal vectorMultiply 0.3);
+            // The target's own hull: aim the warhead into it. Anything else (the ground,
+            // a wall): it goes off along the flight path.
+            if (!isNull _target && { [_target, objectParent _target] findIf { !isNull _x && { _x in [_hitObj, _hitParent] } } >= 0 }) then { _fireAim = _hitPos; };
         };
     };
-    if (_fire isNotEqualTo []) exitWith { [_s, _fire, false] call (_s get "arm"); };
+    if (_fire isNotEqualTo []) exitWith { [_s, _fire, false, _fireAim] call (_s get "arm"); };
 
     // --- steering: lead the target - aim where it will be when we get there. Time to
     // get there at the speed the drone is actually doing: in a dive it can be well under

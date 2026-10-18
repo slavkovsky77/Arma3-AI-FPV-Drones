@@ -128,9 +128,9 @@ class CfgVehicles {
             class BrakingTime: Edit {
                 property = "FPV_AI_Drones_BrakingTime";
                 displayName = "Braking Time (s)";
-                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 1.5.";
+                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 2.";
                 typeName = "NUMBER";
-                defaultValue = "1.5";
+                defaultValue = "2";
             };
             class HitChance: Edit {
                 property = "FPV_AI_Drones_HitChance";
@@ -239,9 +239,9 @@ class CfgVehicles {
             class BrakingTime: Edit {
                 property = "FPV_AI_Drones_BrakingTime";
                 displayName = "Braking Time (s)";
-                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 1.5.";
+                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 2.";
                 typeName = "NUMBER";
-                defaultValue = "1.5";
+                defaultValue = "2";
             };
             class HitChance: Edit {
                 property = "FPV_AI_Drones_HitChance";
@@ -349,9 +349,9 @@ class CfgVehicles {
             class BrakingTime: Edit {
                 property = "FPV_AI_Drones_BrakingTime";
                 displayName = "Braking Time (s)";
-                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 1.5.";
+                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 2.";
                 typeName = "NUMBER";
-                defaultValue = "1.5";
+                defaultValue = "2";
             };
             class HitChance: Edit {
                 property = "FPV_AI_Drones_HitChance";

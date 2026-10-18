@@ -168,6 +168,7 @@ FPVT_stages = [];   // non-empty: run exactly these stages (run_tests.py --stage
 FPVT_bench = 0;     // > 0: only the speed bench, this many rounds (run_tests.py --bench)
 FPVT_compat = [];   // [[drone class, payload], ...]: only the other-mods drone check (run_tests.py --compat)
 FPVT_headless = false;   // dedicated server with no one watching (run_tests.py --headless): don't wait for a client
+FPVT_benchCases = [];   // non-empty: only these bench cases - close/medium/far/cover/infantry/dodge/swarm (run_tests.py --bench-cases)
 FPVT_set = [];   // [[module setting, value], ...] for every module in the run (run_tests.py --set), e.g. [["BrakingTime", 2.5]]
 if (fileExists "testconfig.sqf") then { call compile preprocessFileLineNumbers "testconfig.sqf"; };
 FPVT_fnc_runStage = { params ["_n"]; if (FPVT_stages isEqualTo []) then { _n >= FPVT_startStage } else { _n in FPVT_stages } };
@@ -456,10 +457,22 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
     FPVT_stages = [-1];   // no regular stages
     FPV_AI_Drones_debug = true;
     FPVT_dodges = [];
+    FPVT_fnc_benchCase = { params ["_c"]; FPVT_benchCases isEqualTo [] || { _c in FPVT_benchCases } };
+    // The AT payload in use and what the game's config says it does.
+    private _benchAmmo = "";
+    { if ((_x select 0) == "CustomAmmo") then { _benchAmmo = _x select 1; }; } forEach (FPVT_AT + FPVT_set);
+    {
+        private _a = configFile >> "CfgAmmo" >> _x;
+        private _sub = getText (_a >> "submunitionAmmo");
+        ["bench payload", "INFO", format ["%1: exists=%2 simulation=%3 hit=%4 indirectHit=%5 indirectHitRange=%6 submunition=%7 (hit %8)",
+            _x, isClass _a, getText (_a >> "simulation"), getNumber (_a >> "hit"), getNumber (_a >> "indirectHit"), getNumber (_a >> "indirectHitRange"),
+            _sub, getNumber (configFile >> "CfgAmmo" >> _sub >> "hit")]] call FPVT_fnc_report;
+    } forEach (_benchAmmo splitString ", ");
     private _cleanup = { params ["_veh"]; if (!isNull _veh) then { { deleteVehicle _x } forEach crew _veh; deleteVehicle _veh; }; };
     for "_pass" from 1 to FPVT_bench do {
         {
             _x params ["_label", "_x0", "_tankDist", "_crossOffset", "_range"];
+            if !([_label] call FPVT_fnc_benchCase) then { continue; };
             private _settings = FPVT_AT + [["TargetDetectionRange", _range]];
 
             // A: parked tank.
@@ -509,6 +522,7 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
 
         // C: parked tank 150 m away, tucked in right behind a building - a straight
         // shallow dive would go into the wall.
+        if (["cover"] call FPVT_fnc_benchCase) then {
         private _d = [[7000, 1500, 0]] call FPVT_fnc_spawnDrone;
         _d setVariable ["FPV_AI_Drones_managed", true, true];
         private _wall = createVehicle ["Land_Cargo_HQ_V1_F", [7000, 1636, 0], [], 0, "CAN_COLLIDE"];
@@ -523,8 +537,10 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
         [format ["bench %1 cover parked tank behind building", _pass], [_t] call FPVT_fnc_vehicleDone,
             format ["damage=%1 crewAlive=%2 timedOut=%3", damage _t toFixed 2, {alive _x} count crew _t, _to]] call FPVT_fnc_check;
         [_t] call _cleanup; [_d] call _cleanup; deleteVehicle _l; deleteVehicle _wall;
+        };
 
         // D: Anti-Personnel drone vs a 4-man squad 150 m away.
+        if (["infantry"] call FPVT_fnc_benchCase) then {
         _d = [[7000, 4500, 0], "B_Crocus_AP"] call FPVT_fnc_spawnDrone;
         _d setVariable ["FPV_AI_Drones_managed", true, true];
         private _squad = [[7000, 4650, 0], 4] call FPVT_fnc_spawnSquad;
@@ -535,10 +551,12 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
         [format ["bench %1 infantry squad 150m", _pass], ({!alive _x} count _squad) > 0,
             format ["killed %1/4 timedOut=%2", {!alive _x} count _squad, _to]] call FPVT_fnc_check;
         { deleteVehicle _x } forEach _squad; [_d] call _cleanup; deleteVehicle _l;
+        };
 
         // F: dodge - a car at ~80 km/h that swerves 60 degrees when the drone is 40 m
         // out, three tries. Info only: with more Braking Time (a heavier drone) more of
         // these should get away - that's the point of the setting.
+        if (["dodge"] call FPVT_fnc_benchCase) then {
         for "_try" from 1 to 3 do {
             _d = [[1000, 2000, 0]] call FPVT_fnc_spawnDrone;
             _d setVariable ["FPV_AI_Drones_managed", true, true];
@@ -586,7 +604,9 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
             FPVT_dodges pushBack _hit;
             [_car] call _cleanup; [_d] call _cleanup; deleteVehicle _l;
         };
+        };
 
+        if !(["swarm"] call FPVT_fnc_benchCase) then { continue; };
         // E: swarm - 6 drones side by side vs 3 tanks + 3 cars spread out 150 m away.
         // Fast drones arriving together can catch each other's blasts (any hit sets a
         // Crocus off), and every drone runs a per-frame handler: watch the server FPS.

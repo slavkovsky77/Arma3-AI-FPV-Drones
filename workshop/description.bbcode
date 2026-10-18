@@ -5,6 +5,15 @@ AI-controlled FPV kamikaze drones. Give a drone this module and it takes off, hu
 Works in the [b]Eden editor[/b] and in [b]Zeus[/b], in singleplayer and on [b]dedicated servers[/b].
 
 [h2]Changelog[/h2]
+[b]1.3.0 - weight, speed and accuracy[/b]
+[list]
+[*]New setting [b]Braking Time[/b] - how heavy the drone is: the seconds it needs to stop from full speed. Braking, turning and speeding up all share it, so heavier drones swing wide and react later. Default 2 s (1.5 is close to the old feel)
+[*]New setting [b]Cruise Speed[/b] - how fast the drone flies its waypoints before it finds a target (default 126 km/h)
+[*]New setting [b]Accuracy[/b] - the % of attack runs aimed at the target; the rest are planned misses that come down beside it, on the side away from other units
+[*]Drones [b]brake before each waypoint[/b] and curve onto the next leg instead of turning on the spot
+[*]Attack runs have momentum: the drone brakes for its dive, and after a low miss it pulls up and makes another pass
+[*]Rocket warheads set as the payload (e.g. an RPG round) are now fired into the target instead of going off in place
+[/list]
 [b]1.2.1[/b]
 [list]
 [*]Fixed: patrol loops (MOVE, MOVE, CYCLE) stopped after one lap - the drone hung at the CYCLE waypoint instead of going round
@@ -31,6 +40,7 @@ Works in the [b]Eden editor[/b] and in [b]Zeus[/b], in singleplayer and on [b]de
 [*][b]Waypoints[/b] - drones fly their waypoints while searching, patrol loops with CYCLE included, and attack whatever they find on the way
 [*][b]Other drone mods[/b] - any UAV can be given a module; tested with FPV Drone Crocus Enhanced and Ukraine FPV Drone
 [*][b]Fast attack run[/b] - flown by the script at 180 km/h, leads moving targets, dives over cover and detonates on contact
+[*][b]Weight and accuracy you can tune[/b] - Braking Time makes drones heavier or nimbler, Accuracy lets them miss
 [*][b]Multiplayer-safe[/b] - all drone AI runs on the server; one explosion per drone, never one per player
 [*][b]Signed[/b] - ships with a .bikey for servers with signature checks
 [*]Two [b]example scenarios[/b] (Virtual Reality) - Play > [b]Showcases[/b]
@@ -59,6 +69,9 @@ Want to see it set up? The mod's [b]examples[/b] folder has editable copies of b
 [tr][td]Target Unit Types[/td][td]LandVehicle, Car, Tank[/td][td]Man[/td][/tr]
 [tr][td]Target Detection Range[/td][td]200 m[/td][td]200 m[/td][/tr]
 [tr][td]Attack Speed[/td][td]180 km/h[/td][td]144 km/h[/td][/tr]
+[tr][td]Cruise Speed (waypoints)[/td][td]126 km/h[/td][td]126 km/h[/td][/tr]
+[tr][td]Braking Time[/td][td]2 s[/td][td]2 s[/td][/tr]
+[tr][td]Accuracy[/td][td]100 %[/td][td]100 %[/td][/tr]
 [tr][td]Target Sides[/td][td]Mission's enemies[/td][td]Mission's enemies[/td][/tr]
 [tr][td]Initial Search Height[/td][td]30 m[/td][td]50 m[/td][/tr]
 [tr][td]Payload[/td][td]Satchel charge[/td][td]Demo charge[/td][/tr]
@@ -92,4 +105,4 @@ Copy [b]keys\fpv_ai_drones_v1_1.bikey[/b] into your server's keys folder. All dr
 [h2]Reuploads[/h2]
 [b]Do not reupload this mod or its code - modified or not - without my permission and clear credit.[/b] Want to build on it or include it in a modpack? Ask in the comments or on GitHub; I'm happy to say yes. Uploads that copy this mod without permission will be reported.
 
-Created by slavkovsky77 - version 1.2.1
+Created by slavkovsky77 - version 1.3.0

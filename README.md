@@ -107,8 +107,8 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Target Detection Range | 200 | 200 | Acquisition range. A target is chased until it's 1.5x this far away |
 | Attack Speed | 180 | 144 | Top speed of the attack run (km/h) |
 | Cruise Speed | 126 | 126 | Speed on waypoints, before a target is found (km/h) |
-| Braking Time | 1.5 | 1.5 | Seconds to stop from full speed - how heavy the drone is. Acceleration for braking, speeding up and turning = top speed / braking time. Higher: wider turns, slower to react, a target that swerves late can get away |
-| Accuracy | 100 | 100 | % of attack runs aimed at the target. The rest come down beside it, a few blast radii of the payload away (2.5x the payload's blast radius + 0-4 m, at least 6 m) |
+| Braking Time | 2 | 2 | Seconds to stop from full speed - how heavy the drone is. Acceleration for braking, speeding up and turning = top speed / braking time. Higher: wider turns, slower to react, a target that swerves late can get away |
+| Accuracy | 100 | 100 | % of attack runs aimed at the target. The rest come down beside it, a few blast radii of the payload away (vehicles: 2.5x the payload's blast radius + 0-4 m, at least 6 m; infantry: where the blast is down to about 1 point of damage, ~17 m for the demo charge) |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 

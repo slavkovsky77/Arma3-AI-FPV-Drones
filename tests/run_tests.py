@@ -337,6 +337,7 @@ class Missions
             f"FPVT_startStage = {a.start_stage or 1};",
             f"FPVT_stages = [{','.join(map(str, a.stages))}];",
             f"FPVT_bench = {a.bench};",
+            "FPVT_benchCases = [" + ",".join(f'"{c}"' for c in a.bench_cases) + "];",
             "FPVT_compat = [" + ",".join(f'["{t}","{p}"]' for t, p in compat) + "];",
             f"FPVT_headless = {'true' if a.headless else 'false'};",
             "FPVT_set = [" + ",".join(f'["{k}",{v}]' for k, v in settings) + "];",
@@ -409,6 +410,8 @@ def parse():
     p.add_argument("--quick", action="store_true", help="speed-iteration set: the attack-run stages (1, 2, 7, 10, 11)")
     p.add_argument("--bench", type=int, default=0, choices=range(0, 21), metavar="N",
                    help="just the attack-speed bench, this many rounds (default --mode MP)")
+    p.add_argument("--bench-cases", nargs="+", default=[], choices=["close", "medium", "far", "cover", "infantry", "dodge", "swarm"],
+                   help="with --bench: only these cases (e.g. --bench-cases medium dodge to compare payloads)")
     p.add_argument("--map", default="VR", help="world to play the test mission on, e.g. Stratis (the bench then uses random real-terrain spots)")
     p.add_argument("--compat", nargs="+", default=[], metavar="CLASS[:PAYLOAD]",
                    help="another mod's drone classes: each flies a MOVE, MOVE, CYCLE loop, then must kill an enemy car (default --mode SP)")
