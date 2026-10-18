@@ -132,6 +132,14 @@ near every move point and could not catch a moving vehicle:
 - aims where a moving target will be (lead), not where it is
 - glides down at about 1:3 to a dive entry point 30 m out; if a building or trees block the
   straight line down, the entry point is raised until it doesn't (steep dive over cover)
+- plans the dive for its weight: starts down earlier, and brakes so it reaches the dive entry slow
+  enough to turn onto the target within 30 m (32 m/s at Braking Time 1.5, 22 at 3; never slower
+  than the target + 10 m/s); in the final dive it slows more if the turn is still too tight
+- missed low (the target swerved, or it overshot): stops sinking, climbs and makes a new pass, as
+  long as there is room to stop - otherwise it keeps diving at the target
+- steers from the velocity it set the frame before, so the AI pilot can't add or remove speed
+  between frames (it was holding the drone up against the glide); keeping clear of another drone
+  may use 3x the acceleration budget
 - the charge goes off on the surface it's about to hit (or within 3 m of the target's centre)
 - gives up only if the target is destroyed or no longer hostile (crew dead), is 1.5x detection
   range away, or the drone makes no progress for 12 s - then it searches again

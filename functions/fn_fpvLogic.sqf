@@ -508,7 +508,14 @@ private _guide = {
     private _dt = diag_deltaTime * accTime;
     if (_dt <= 0) exitWith {};
     private _p = getPosASL _uav;
+    // Steer from the velocity set last frame, not the one read back. Between frames the
+    // AI pilot's rotors push the drone towards the height it holds, and that push built
+    // up: at Braking Time 3 a drone told to sink at 25 m/s for a second was sinking at 2,
+    // still 31 m up 70 m from a tank. A big difference is something real (a bump, a
+    // blast, the ground on takeoff): then go on from what the engine says.
     private _v = velocity _uav;
+    private _vSet = _s getOrDefault ["vSet", _v];
+    if ((_vSet vectorDistance _v) < 4) then { _v = _vSet; };
     private _speed = _s get "speed";
     private _blast = _s get "blast";
     _s set ["lastPos", _p];
@@ -601,6 +608,7 @@ private _guide = {
         && { ((_v vectorDotProduct _toAim) / (_vMag * ((vectorMagnitude _toAim) max 0.1))) < 0.3 };
 
     private _vDes = [];
+    private _sep = [0, 0, 0];
     if (_d2 < 30 && { !_popUp } && { !_missed }) then {
         // Terminal: straight at it - as fast as the drone can still turn onto it. The arc
         // from its heading onto the aim point has radius d / (2 sin a), and flying it takes
@@ -623,24 +631,32 @@ private _guide = {
         // entry 10 m too high, which a heavy drone could not make up (it overshot).
         private _slope = 0.35;
         private _ceiling = (_s get "cruise") max _termH;
+        // Reach the dive entry slow enough to turn onto the target within its last 30 m
+        // (a 30 m turn at the drone's acceleration: 32 m/s at Braking Time 1.5, 22 at 3,
+        // never slower than the target + 10), braking for it the way it brakes for a
+        // waypoint. A drone at Braking Time 3 reached the dive at 47 m/s and flew 6 m
+        // over a parked tank.
+        private _vEntry = (sqrt (30 * (_s get "accel"))) max ((vectorMagnitude _tVel) + 10);
+        private _vhPlan = _speed min (sqrt ((_vEntry ^ 2) + (2 * 0.8 * (_s get "accel") * ((_d2 - 30) max 0))));
         // It also needs room to set up its sink rate - at Braking Time 2, 0.7 s and 35 m.
         // Flying the slope from where it starts, the drone reached a dive entry 18 m up
         // at 27 m and passed 10 m over a tank behind a building. So it follows the slope
         // as it will be half that distance on, and is on it by the time it matters.
         private _vH = vectorMagnitude [_v select 0, _v select 1, 0];
-        private _dSlope = _d2 - (_vH * ((_slope * _speed) / (_s get "accel")) / 2);
+        private _dSlope = _d2 - (_vH * ((_slope * _vhPlan) / (_s get "accel")) / 2);
         private _hRel = (_termH + (((_dSlope - 30) max 0) * _slope)) min _ceiling;
         private _onSlope = _dSlope > 30 && { _hRel < _ceiling };
         private _zDes = ((_aim select 2) + _hRel) max (_ground + 5);
         _s set ["wantAgl", (_zDes - _ground) max 2];
-        private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _speed] select _onSlope)) max -((_slope * _speed) + 8)) min 15;
-        private _vh = sqrt (((_speed ^ 2) - (_vz ^ 2)) max 0);
+        private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _vhPlan] select _onSlope)) max -((_slope * _vhPlan) + 8)) min 15;
+        private _vh = _vhPlan min (sqrt (((_speed ^ 2) - (_vz ^ 2)) max 0));
         // Still lifting off: straight up until clear of the ground (dragging along it
         // counts as a hit - see the attitude note below), then ease into going flat out.
         _vh = _vh * (((((_p select 2) - _ground - 1.5) / 3) max 0) min 1);
         // Popping up over cover: slow down so the climb happens before the wall does.
         if (_popUp) then { _vh = _vh * 0.3; };
-        _vDes = (((vectorNormalized _toAimH) vectorMultiply _vh) vectorAdd [0, 0, _vz]) vectorAdd ([_uav, _p] call (_s get "separate"));
+        _sep = [_uav, _p] call (_s get "separate");
+        _vDes = (((vectorNormalized _toAimH) vectorMultiply _vh) vectorAdd [0, 0, _vz]) vectorAdd _sep;
 
         // Something in the way in the next ~1.5 s (trees, a building, a ridge): pull up.
         private _look = (((vectorMagnitude _v) * 1.5) max 15) min ((_d2 - 5) max 3);
@@ -653,9 +669,11 @@ private _guide = {
         if (_missed && { (_v select 2) < 0 }) then { _vDes = [_v select 0, _v select 1, 4]; };
     };
 
-    // Ease towards it rather than snapping: at most "accel" m/s per second of change.
+    // Ease towards it rather than snapping: at most "accel" m/s per second of change -
+    // except to keep clear of another drone, which gets up to three times that, like a
+    // reflex. Without it heavy drones (Braking Time 3) collided just after takeoff.
     private _dv = _vDes vectorDiff _v;
-    private _maxDv = (_s get "accel") * _dt;
+    private _maxDv = ((_s get "accel") max ((vectorMagnitude _sep) * 3)) * _dt;
     if ((vectorMagnitude _dv) > _maxDv) then { _dv = (vectorNormalized _dv) vectorMultiply _maxDv; };
     private _vNew = _v vectorAdd _dv;
 
@@ -665,6 +683,7 @@ private _guide = {
     // also tipped the tail into the ground on takeoff, and the Crocus mod treats ANY
     // hit as impact - its "hit" handler fires the drone's own warhead and deletes it.
     _uav setVelocity _vNew;
+    _s set ["vSet", _vNew];
 
     // Flight trace for tuning (FPV_AI_Drones_debug = true): the first frames, then twice a second.
     if (missionNamespace getVariable ["FPV_AI_Drones_debug", false]) then {

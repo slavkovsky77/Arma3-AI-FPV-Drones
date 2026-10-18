@@ -1,0 +1,12 @@
+v1.3.0 - Weight, speed and accuracy settings
+
+NEW MODULE SETTINGS
+- Cruise Speed (km/h): how fast the drone flies its waypoints before it has found a target. Default 126
+- Braking Time (s): how heavy the drone is - the seconds it needs to stop from full speed. It limits braking, turning and speeding up alike: higher means wider turns, slower reactions, and a target that swerves late has a better chance. Default 1.5
+- Accuracy (%): the share of attack runs aimed at the target. The rest are planned misses that come down beside the target or short of it, on the side away from other units, a few blast radii of the payload away. Default 100
+- Attack Speed (km/h) was already there: top speed of the attack run, 180 for vehicles, 144 for infantry
+
+CHANGED
+- Drones now brake before each waypoint, harder the sharper the turn, and curve onto the next leg instead of switching direction on the spot
+- The attack run has momentum: the drone eases into turns and dives, slows down to tip into a steep dive, and a drone that misses low pulls up and makes another pass instead of flying into the ground
+- Drones lead moving targets by the speed they are actually flying, so they hit crossing vehicles more reliably at any Braking Time
