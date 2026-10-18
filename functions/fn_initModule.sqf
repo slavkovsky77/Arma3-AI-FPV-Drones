@@ -80,7 +80,7 @@ private _center = getPosATL _logic;   // fixed: a module attached to a drone sho
 
 if (_enableChat) then {
     private _msg = format [
-        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, TargetSides: %3, AttackSpeed: %4 km/h, AllowObjectParent: %5, CustomAmmo: %6, TargetDetectionRange: %7, CruiseSpeed: %8 km/h, BrakingTime: %9 s, Accuracy: %10%",
+        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, TargetSides: %3, AttackSpeed: %4 km/h, AllowObjectParent: %5, CustomAmmo: %6, TargetDetectionRange: %7, CruiseSpeed: %8 km/h, BrakingTime: %9 s, Accuracy: %10 percent",
         _unitKinds, _targetSource, _targetSides, _attackSpeed, _allowObjectParent, _customAmmo, _targetDetectionRange, _cruiseSpeed, _brakingTime, _hitChance
     ];
     // Runs on the server, so it has to be broadcast to reach any player.

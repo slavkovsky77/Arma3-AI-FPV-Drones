@@ -429,7 +429,7 @@ if ((random 100) >= _hitChance) then {
         { _clear = _clear min (_spot distance2D (getPosASL _x)); } forEach _others;
         if (_clear > _bestClear) then { _bestClear = _clear; _miss = _cand; };
     } forEach ([90, -90, 135, -135, 180] call BIS_fnc_arrayShuffle);
-    diag_log format ["FPV_AI_Drones: drone %1 will miss (accuracy %2%): aiming %3m from %4, %5m from anyone", _uavInstance, _hitChance, round vectorMagnitude _miss, _target, round _bestClear];
+    diag_log format ["FPV_AI_Drones: drone %1 will miss (accuracy %2 percent): aiming %3m from %4, %5m from anyone", _uavInstance, _hitChance, round vectorMagnitude _miss, _target, round _bestClear];
 };
 
 // Fallback trigger radius around the target's centre mass. Vehicles are normally
