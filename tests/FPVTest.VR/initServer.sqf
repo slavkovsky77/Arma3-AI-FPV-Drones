@@ -81,7 +81,8 @@ FPVT_fnc_spawnDrone = {
 FPVT_fnc_module = {
     params ["_pos", "_settings"];
     private _logic = (createGroup sideLogic) createUnit ["Logic", _pos, [], 0, "CAN_COLLIDE"];
-    { _logic setVariable [_x select 0, _x select 1, true]; } forEach _settings;
+    // FPVT_set (run_tests.py --set) comes last, so it overrides a stage's own settings.
+    { _logic setVariable [_x select 0, _x select 1, true]; } forEach (_settings + FPVT_set);
     _logic
 };
 
@@ -166,6 +167,8 @@ FPVT_startStage = 1;
 FPVT_stages = [];   // non-empty: run exactly these stages (run_tests.py --stages / --quick)
 FPVT_bench = 0;     // > 0: only the speed bench, this many rounds (run_tests.py --bench)
 FPVT_compat = [];   // [[drone class, payload], ...]: only the other-mods drone check (run_tests.py --compat)
+FPVT_headless = false;   // dedicated server with no one watching (run_tests.py --headless): don't wait for a client
+FPVT_set = [];   // [[module setting, value], ...] for every module in the run (run_tests.py --set), e.g. [["BrakingTime", 2.5]]
 if (fileExists "testconfig.sqf") then { call compile preprocessFileLineNumbers "testconfig.sqf"; };
 FPVT_fnc_runStage = { params ["_n"]; if (FPVT_stages isEqualTo []) then { _n >= FPVT_startStage } else { _n in FPVT_stages } };
 
@@ -204,6 +207,7 @@ if (FPVT_compat isNotEqualTo []) then {
 // allPlayers is only populated in multiplayer; in singleplayer the player is just "player".
 FPVT_fnc_humans = { if (isMultiplayer) then { allPlayers - entities "HeadlessClient_F" } else { [player] select { !isNull _x } } };
 if (isMultiplayer) then {
+    if (FPVT_headless) exitWith { sleep 5; };
     waitUntil { sleep 1; count (call FPVT_fnc_humans) > 0 };
     sleep 10;   // client loading screen + camera setup
 } else {
@@ -261,12 +265,30 @@ if (FPVT_compatCases isNotEqualTo []) then {
         private _hung = "";
         private _until = time + 90;
         private _nextLog = 0;
+        // How the corners are flown (Workshop report: "no braking, it switches to the next
+        // waypoint instantly, as if it had no weight"): the lowest speed near each waypoint,
+        // and the hardest horizontal speed change, sampled every 0.25 s.
+        private _corners = [];   // [waypoint, lowest km/h within 40 m] per visit
+        private _peakAcc = 0;
+        private _lastV = [];
+        private _lastT = time;
         while { time < _until && { _hung == "" } && { (_legs select [count _legs - 4 max 0]) isNotEqualTo [1, 2, 0, 1] } } do {
             _drone = [_drone, _lastPos] call _follow;
             if (!isNull _drone) then {
                 _lastPos = getPosATL _drone;
+                private _v = velocity _drone;
+                _v set [2, 0];
+                if (_lastV isNotEqualTo [] && { time > _lastT }) then {
+                    _peakAcc = _peakAcc max ((vectorMagnitude (_v vectorDiff _lastV)) / (time - _lastT));
+                };
+                _lastV = _v;
+                _lastT = time;
                 private _at = [[_x0, 5000, 0], [_x0, 5300, 0], [_x0 + 300, 5300, 0]] findIf { _drone distance2D _x < 40 };
-                if (_at >= 0 && { (_legs param [count _legs - 1, -1]) != _at }) then { _legs pushBack _at; };
+                if (_at >= 0 && { (_legs param [count _legs - 1, -1]) != _at }) then { _legs pushBack _at; _corners pushBack [_at, 1e9]; };
+                if (_at >= 0 && { _corners isNotEqualTo [] }) then {
+                    private _c = _corners select (count _corners - 1);
+                    _c set [1, (_c select 1) min ((vectorMagnitude _v) * 3.6)];
+                };
                 if (speed _drone < 5 && { ((getPosATL _drone) select 2) > 5 }) then {
                     if (_stillSince < 0) then { _stillSince = time; };
                     if (time - _stillSince > 6) then { _hung = [_drone, _home] call _state; };
@@ -276,10 +298,13 @@ if (FPVT_compatCases isNotEqualTo []) then {
                 _nextLog = time + 5;
                 ["compat state", "INFO", [_drone, _home] call _state] call FPVT_fnc_report;
             };
-            sleep 0.5;
+            sleep 0.25;
         };
         [format ["compat %1 flew its loop round", _label], _hung == "" && { (_legs select [count _legs - 4 max 0]) isEqualTo [1, 2, 0, 1] },
             format ["waypoints in order %1 (want ...1,2,0,1) hung=%2 drone=%3 (placed %4)", _legs, [_hung, "no"] select (_hung == ""), _drone, _drone0]] call FPVT_fnc_check;
+        // Turns: wp1 90 deg, wp2 135 deg, home (the CYCLE) 135 deg.
+        ["corners", "INFO", format ["%1: lowest speed near each waypoint %2 km/h, peak horizontal acceleration %3 m/s2",
+            _label, _corners apply { format ["wp%1=%2", _x select 0, round (_x select 1)] }, _peakAcc toFixed 1]] call FPVT_fnc_report;
 
         // 2. Enemy car driving north through the middle of the loop, coming into range
         // while the drone is on its way round.
@@ -430,6 +455,7 @@ if (FPVT_bench > 0 && { worldName != "VR" }) then {
 if (FPVT_bench > 0 && { worldName == "VR" }) then {
     FPVT_stages = [-1];   // no regular stages
     FPV_AI_Drones_debug = true;
+    FPVT_dodges = [];
     private _cleanup = { params ["_veh"]; if (!isNull _veh) then { { deleteVehicle _x } forEach crew _veh; deleteVehicle _veh; }; };
     for "_pass" from 1 to FPVT_bench do {
         {
@@ -510,6 +536,57 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
             format ["killed %1/4 timedOut=%2", {!alive _x} count _squad, _to]] call FPVT_fnc_check;
         { deleteVehicle _x } forEach _squad; [_d] call _cleanup; deleteVehicle _l;
 
+        // F: dodge - a car at ~80 km/h that swerves 60 degrees when the drone is 40 m
+        // out, three tries. Info only: with more Braking Time (a heavier drone) more of
+        // these should get away - that's the point of the setting.
+        for "_try" from 1 to 3 do {
+            _d = [[1000, 2000, 0]] call FPVT_fnc_spawnDrone;
+            _d setVariable ["FPV_AI_Drones_managed", true, true];
+            private _car = createVehicle ["O_MRAP_02_F", [1100, 1680, 0], [], 0, "NONE"];
+            _car setDir 0;
+            createVehicleCrew _car;
+            private _cg = group effectiveCommander _car;
+            _cg setBehaviour "CARELESS";
+            _cg setCombatMode "BLUE";
+            _cg setSpeedMode "FULL";
+            { _x disableAI "AUTOTARGET"; _x disableAI "TARGET"; } forEach units _cg;
+            _car limitSpeed 80;
+            _cg addWaypoint [[1100, 4500, 0], 0];
+            _l = [[1008, 2000, 0], FPVT_AT] call FPVT_fnc_module;
+            [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+            [format ["Bench %1/%2 dodge %3/3 - car swerves when the drone is 40 m out", _pass, FPVT_bench, _try], _d, _car] call FPVT_fnc_show;
+            FPVT_jink = [];   // [time, car speed km/h, side] once it has swerved
+            private _jink = [_car, _d] spawn {
+                params ["_car", "_d"];
+                waitUntil { sleep 0.02; !alive _d || { !alive _car } || { (_d distance _car) < 40 } };
+                if (!alive _d || { !alive _car }) exitWith {};
+                private _side = selectRandom [-1, 1];
+                FPVT_jink = [time, round speed _car, _side];
+                // 60 degrees in 0.4 s, keeping its speed - a hard swerve.
+                for "_i" from 1 to 6 do {
+                    private _v = (speed _car) / 3.6;
+                    _car setDir ((getDir _car) + 10 * _side);
+                    _car setVelocityModelSpace [0, _v, 0];
+                    sleep 0.067;
+                };
+            };
+            private _closest = 1e9;
+            private _end = time + 60;
+            waitUntil {
+                sleep 0.05;
+                if (alive _d) then { _closest = _closest min (_d distance _car); };
+                [_car] call FPVT_fnc_vehicleDone || { !alive _d } || { time > _end }
+            };
+            sleep 3;
+            terminate _jink;
+            private _hit = [_car] call FPVT_fnc_vehicleDone;
+            ["bench dodge", "INFO", format ["try %1: %2 - swerved=%3 at %4 km/h, closest %5 m, car damage=%6 crewAlive=%7",
+                _try, ["car got away", "car hit"] select _hit, FPVT_jink isNotEqualTo [], FPVT_jink param [1, -1],
+                round _closest, damage _car toFixed 2, { alive _x } count crew _car]] call FPVT_fnc_report;
+            FPVT_dodges pushBack _hit;
+            [_car] call _cleanup; [_d] call _cleanup; deleteVehicle _l;
+        };
+
         // E: swarm - 6 drones side by side vs 3 tanks + 3 cars spread out 150 m away.
         // Fast drones arriving together can catch each other's blasts (any hit sets a
         // Crocus off), and every drone runs a per-frame handler: watch the server FPS.
@@ -542,6 +619,7 @@ if (FPVT_bench > 0 && { worldName == "VR" }) then {
             format ["%1/6 vehicles done, server fps min %2", _killed, round _minFps]] call FPVT_fnc_check;
         { [_x] call _cleanup } forEach (_targets + _drones); deleteVehicle _l;
     };
+    ["bench dodge", "INFO", format ["swerving car hit %1 of %2 times (settings: %3)", { _x } count FPVT_dodges, count FPVT_dodges, FPVT_set]] call FPVT_fnc_report;
 };
 
 private ["_drone", "_tank", "_logic", "_timedOut"];
@@ -730,7 +808,10 @@ terminate _trace;
 
 };
 
-if ([8] call FPVT_fnc_runStage) then {
+if ([8] call FPVT_fnc_runStage && { FPVT_headless }) then {
+    ["8 skipped", "INFO", "headless run: stage 8 needs a player's machine to place the drone from"] call FPVT_fnc_report;
+};
+if ([8] call FPVT_fnc_runStage && { !FPVT_headless }) then {
 // --- Stage 8: drone AND module created on the player's machine, like Zeus ----
 // In multiplayer, everything a Zeus places belongs to the Zeus player's machine:
 // the module (its init runs there) and the drone with its AI crew. The server
@@ -875,6 +956,47 @@ terminate _speedWatch;
 ["11a moving tank hit", [_mover] call FPVT_fnc_vehicleDone,
     format ["tank alive=%1 damage=%2 crewAlive=%3 tankSpeedBeforeHit=%4km/h timedOut=%5",
         alive _mover, damage _mover toFixed 2, { alive _x } count crew _mover, round (missionNamespace getVariable ["FPVT_moverSpeed", -1]), _timedOut]] call FPVT_fnc_check;
+};
+
+if ([12] call FPVT_fnc_runStage) then {
+// --- Stage 12: Accuracy -------------------------------------------------------
+// The module's "Accuracy (%)": a run that misses on purpose comes down beside the
+// target, a few blast radii of its payload away. At 0% every run misses: the payload
+// must go off well clear, and the target must come through it.
+// Where it went off: the drone's last position, recorded every frame.
+FPVT_watchDrone = objNull;
+FPVT_lastDronePos = [];
+private _recorder = addMissionEventHandler ["EachFrame", { if (alive FPVT_watchDrone) then { FPVT_lastDronePos = getPosASL FPVT_watchDrone; }; }];
+
+_drone = [[5500, 6000, 0]] call FPVT_fnc_spawnDrone;
+_drone setVariable ["FPV_AI_Drones_managed", true, true];
+FPVT_watchDrone = _drone;
+_tank = [[5500, 6150, 0]] call FPVT_fnc_spawnTank;
+_logic = [[5508, 6000, 0], FPVT_AT + [["HitChance", 0]]] call FPVT_fnc_module;
+[_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
+["Stage 12 - Anti-Tank drone set to 0% accuracy: must come down beside the tank", _drone, _tank] call FPVT_fnc_show;
+_timedOut = [_drone, _tank, FPVT_fnc_vehicleDone, 60] call FPVT_fnc_await;
+private _off = if (FPVT_lastDronePos isEqualTo []) then { -1 } else { round (FPVT_lastDronePos distance2D (getPosASL _tank)) };
+["12a AT drone at 0% accuracy missed the tank", !alive _drone && { _off >= 7 } && { !([_tank] call FPVT_fnc_vehicleDone) },
+    format ["went off %1 m from the tank (want 7+), tank damage=%2 crewAlive=%3 canMove=%4, drone alive=%5 timedOut=%6",
+        _off, damage _tank toFixed 2, { alive _x } count crew _tank, canMove _tank, alive _drone, _timedOut]] call FPVT_fnc_check;
+
+// The same for Anti-Personnel: a smaller charge, so a closer miss - nobody may die.
+_drone = [[6500, 6000, 0], "B_Crocus_AP"] call FPVT_fnc_spawnDrone;
+_drone setVariable ["FPV_AI_Drones_managed", true, true];
+FPVT_watchDrone = _drone;
+FPVT_lastDronePos = [];
+private _squad12 = [[6500, 6150, 0], 4] call FPVT_fnc_spawnSquad;
+_logic = [[6508, 6000, 0], FPVT_AP + [["HitChance", 0]]] call FPVT_fnc_module;
+[_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
+["Stage 12 - Anti-Personnel drone set to 0% accuracy: must miss the squad", _drone, _squad12 select 0] call FPVT_fnc_show;
+_timedOut = [_drone, _squad12, { params ["_units"]; ({alive _x} count _units) == 0 }, 60] call FPVT_fnc_await;
+_off = if (FPVT_lastDronePos isEqualTo []) then { -1 } else { round selectMin (_squad12 apply { FPVT_lastDronePos distance2D (getPosASL _x) }) };
+["12b AP drone at 0% accuracy missed the squad", !alive _drone && { ({ !alive _x } count _squad12) == 0 },
+    format ["went off %1 m from the nearest soldier, killed %2/4, wounded %3, drone alive=%4 timedOut=%5",
+        _off, { !alive _x } count _squad12, { alive _x && { damage _x > 0.05 } } count _squad12, alive _drone, _timedOut]] call FPVT_fnc_check;
+removeMissionEventHandler ["EachFrame", _recorder];
+{ deleteVehicle _x } forEach _squad12;
 };
 
 // --- Summary + hand over Zeus for manual poking -----------------------------

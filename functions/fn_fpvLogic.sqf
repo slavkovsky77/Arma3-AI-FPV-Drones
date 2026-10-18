@@ -23,10 +23,22 @@ params [
     "_initialSearchHeight",
     "_enableChat",
     ["_targetSides", "ENEMIES"],  // ENEMIES | EAST | WEST | GUER | NOTOWN - see _isHostile
-    ["_attackSpeedKmh", -1]       // top speed of the attack run; -1 = 180 (vehicles) / 144 (infantry)
+    ["_attackSpeedKmh", -1],      // top speed of the attack run; -1 = 180 (vehicles) / 144 (infantry)
+    ["_cruiseSpeedKmh", -1],      // speed on waypoints, before a target is found; -1 = 126
+    ["_brakingTime", -1],         // seconds to stop from full speed - how heavy the drone is; -1 = default below
+    ["_hitChance", -1]            // % of attack runs aimed at the target itself, the rest miss; -1 = 100
 ];
 // Since v1.2 _attackDistance, _attackDistance2D, _attackHeight and the delay/stuck
 // parameters are unused (the attack run is flown below); they stay for compatibility.
+
+// Flight model. Braking time sets the acceleration for everything the drone does -
+// braking, speeding up, turning: acceleration = top speed / braking time. A Workshop
+// tester found the drone weightless ("switches to the next waypoint instantly"):
+// v1.2 turned at 26 m/s2 on waypoints and 60 m/s2 in the attack run.
+private _cruiseSpeed = if (_cruiseSpeedKmh > 0) then { (_cruiseSpeedKmh / 3.6) max 3 } else { 35 };
+if (_brakingTime <= 0) then { _brakingTime = 1.5 };   // same default as the modules' setting (config.cpp)
+_brakingTime = (_brakingTime max 0.2) min 20;
+_hitChance = if (_hitChance < 0) then { 100 } else { (_hitChance max 0) min 100 };
 
 // Movement commands only take effect where the drone is local. Bail out rather
 // than issuing orders that silently do nothing.
@@ -196,12 +208,16 @@ private _separation = {
 
 // Waypoint flight. The AI pilot flies a Crocus to its waypoints at 30-60 km/h
 // (its config allows 140): a drone sent 400 m spent ~35 s getting there in testing.
-// While it has a waypoint, this handler flies it there at ~125 km/h, at search
-// height over the ground, easing into the waypoint and parking over the last one.
-// The search loop below sets "dest"; [] leaves the drone to the AI pilot.
+// While it has a waypoint, this handler flies it there at cruise speed, at search
+// height over the ground. Before each waypoint it brakes as far as the next leg
+// needs - a right angle to half speed, a hairpin almost to a stop, the last waypoint
+// to a stop - and flies the turn onto the next leg itself, in an arc. v1.2 slowed
+// late and then swung onto the next leg at 26 m/s2 (2.7 g) in one go.
+// The search loop below sets "dest" and "next"; dest [] leaves the drone to the AI pilot.
 private _cruiseState = createHashMapFromArray [
-    ["uav", _uavInstance], ["dest", []], ["stop", false],
-    ["speed", 35], ["height", _initialSearchHeight], ["separate", _separation]
+    ["uav", _uavInstance], ["dest", []], ["next", []], ["turns", 0], ["stop", false],
+    ["speed", _cruiseSpeed], ["accel", _cruiseSpeed / _brakingTime],
+    ["height", _initialSearchHeight], ["separate", _separation]
 ];
 private _cruise = {
     private _s = _thisArgs select 0;
@@ -216,28 +232,76 @@ private _cruise = {
     if (!isEngineOn _uav) then { _uav engineOn true; };   // else it rises with its rotors still
     private _p = getPosASL _uav;
     private _v = velocity _uav;
+    private _speed = _s get "speed";
+    private _accel = _s get "accel";
     private _toH = [(_dest select 0) - (_p select 0), (_dest select 1) - (_p select 1), 0];
     private _dist = vectorMagnitude _toH;
+
+    // Corner speed for this waypoint, from the angle onto the next leg: full speed
+    // straight on, half at a right angle, a crawl round a hairpin; 0 = stop over it.
+    private _next = _s get "next";
+    private _vCorner = 0;
+    if (_next isNotEqualTo [] && { _dist > 0.5 }) then {
+        private _out = [(_next select 0) - (_dest select 0), (_next select 1) - (_dest select 1), 0];
+        if ((vectorMagnitude _out) > 1) then {
+            _vCorner = ((_speed * (1 + ((vectorNormalized _toH) vectorDotProduct (vectorNormalized _out))) / 2) max 3) min _speed;
+        };
+    };
+    // Start the turn where a turn at corner speed begins: its radius out, v^2 / a.
+    private _turnAt = if (_next isEqualTo []) then { 0 } else { ((_vCorner ^ 2) / _accel) max 4 };
+    if (_next isNotEqualTo [] && { _dist < _turnAt }) exitWith {
+        _s set ["dest", _next];
+        _s set ["next", []];
+        _s set ["turns", (_s get "turns") + 1];
+        if (missionNamespace getVariable ["FPV_AI_Drones_debug", false]) then {
+            diag_log format ["FPV_AI_Drones: trace %1 turning onto the next leg at %2 km/h (corner speed %3 km/h)",
+                _uav, round ((vectorMagnitude _v) * 3.6), round (_vCorner * 3.6)];
+        };
+    };
+
     private _dirH = if (_dist > 0.5) then { vectorNormalized _toH } else { [0, 0, 0] };
+    // Fastest it may go here and still be down to the corner speed where the turn
+    // starts (braking at 80% of its power, to keep some in hand). Over the last
+    // waypoint: settle.
+    private _vAllow = sqrt ((_vCorner ^ 2) + (2 * 0.8 * _accel * ((_dist - _turnAt) max 0)));
+    if (_next isEqualTo []) then { _vAllow = _vAllow min (_dist * 1.5); };
     // Search height over the higher of the ground here and ~2 s ahead.
     private _ahead = _p vectorAdd (_dirH vectorMultiply (((vectorMagnitude _v) * 2) min _dist));
     private _agl = (_p select 2) - (getTerrainHeightASL _p);
     private _zDes = ((getTerrainHeightASL _p) max (getTerrainHeightASL _ahead)) + (_s get "height");
     private _vz = (((_zDes - (_p select 2)) * 1.0) max -8) min 10;
-    // Slow into the waypoint; straight up first when taking off.
-    private _vh = ((_s get "speed") min (_dist * 0.5)) * ((((_agl - 1.5) / 3) max 0) min 1);
+    // Straight up first when taking off.
+    private _vh = (_speed min _vAllow) * ((((_agl - 1.5) / 3) max 0) min 1);
     private _vDes = ((_dirH vectorMultiply _vh) vectorAdd [0, 0, _vz]) vectorAdd ([_uav, _p] call (_s get "separate"));
     // Something in the way in the next ~1.5 s: pull up.
     private _look = ((vectorMagnitude _v) * 1.5) max 15;
     if (_vh > 1 && { (lineIntersectsSurfaces [_p, _p vectorAdd ((vectorNormalized _vDes) vectorMultiply _look), _uav, objNull, true, 1, "GEOM", "NONE"]) isNotEqualTo [] }) then {
         _vDes = [(_vDes select 0) * 0.5, (_vDes select 1) * 0.5, (_vDes select 2) max 8];
     };
+    // Weight: the velocity changes by at most "accel" m/s each second, whichever way.
     private _dv = _vDes vectorDiff _v;
-    private _maxDv = 25 * _dt;
+    private _maxDv = _accel * _dt;
     if ((vectorMagnitude _dv) > _maxDv) then { _dv = (vectorNormalized _dv) vectorMultiply _maxDv; };
     _uav setVelocity (_v vectorAdd _dv);
 };
 addMissionEventHandler ["EachFrame", _cruise, [_cruiseState]];
+
+// The waypoint after waypoint _i as the route goes on: the next one - or after a
+// CYCLE, the one nearest to it, as the engine does, so a MOVE, MOVE, CYCLE patrol
+// goes round for good (v1.2.0 treated CYCLE as the end of the route). -1: none.
+private _followingWp = {
+    params ["_wps", "_i"];
+    if (waypointType (_wps select _i) != "CYCLE") exitWith { [-1, _i + 1] select (_i + 1 < count _wps) };
+    private _at = waypointPosition (_wps select _i);
+    private _best = -1;
+    private _nearest = 1e9;
+    for "_k" from 1 to (count _wps - 1) do {
+        private _d = (waypointPosition (_wps select _k)) distance2D _at;
+        if (_k != _i && { waypointType (_wps select _k) != "CYCLE" } && { _d < _nearest }) then { _nearest = _d; _best = _k; };
+    };
+    _best
+};
+private _turnsSeen = 0;
 
 while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 	if ([_uavInstance] call _is_dead) then {
@@ -264,46 +328,42 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 			_uavInstance setVariable ["FPV_AI_Drones_route", [_wpIdx, _wpSig]];
 		};
 		if (_wpIdx < count _wps) then {
-			private _wpIndex = _wpIdx;
-			private _wpPos = waypointPosition (_wps select _wpIdx);
-			// Fly to it - and once it's the last one reached, stay parked over it.
-			_cruiseState set ["dest", _wpPos];
-			if (_uavInstance distance2D _wpPos < 40) then {
-				_wpIdx = _wpIdx + 1;
-				// CYCLE: carry on from the waypoint nearest to it, as the engine does, so
-				// a MOVE, MOVE, CYCLE patrol goes round for good. It used to be treated as
-				// the end of the route: the drone parked there after one lap.
-				if (waypointType (_wps select _wpIndex) == "CYCLE") then {
-					private _next = -1;
-					private _nearest = 1e9;
-					for "_i" from 1 to (count _wps - 1) do {
-						private _d = (waypointPosition (_wps select _i)) distance2D _wpPos;
-						if (_i != _wpIndex && { waypointType (_wps select _i) != "CYCLE" } && { _d < _nearest }) then {
-							_nearest = _d;
-							_next = _i;
-						};
-					};
-					if (_next > 0) then { _wpIdx = _next; };
+			// The handler turns onto the next leg by itself, mid-turn; catch up with it.
+			private _turns = _cruiseState get "turns";
+			if (_turns > _turnsSeen) then {
+				for "_n" from 1 to (_turns - _turnsSeen) do {
+					private _f = [_wps, _wpIdx] call _followingWp;
+					if (_f > 0) then { _wpIdx = _f; };
 				};
+				_turnsSeen = _turns;
 				_uavInstance setVariable ["FPV_AI_Drones_route", [_wpIdx, _wpSig]];
 				// Keep the group's own current waypoint on the one we fly to. A drone whose
 				// AI follows waypoints itself (unlike the Crocus) otherwise leans towards a
 				// different one while this script holds it on course: seen with the Ukraine
 				// FPV Drone mod, hanging over its CYCLE waypoint tilted 45 degrees.
-				if (_wpIdx < count _wps) then { _grp setCurrentWaypoint [_grp, _wpIdx]; };
-				_lastWaypointOrder = [];
-			} else {
-				// Re-issue only when the waypoint moved, or every 10s as a backstop -
-				// spamming move orders is what makes the flight look wobbly.
-				if (!(_wpPos isEqualTo _lastWaypointOrder) || { diag_tickTime > _lastWaypointOrderTime + 10 }) then {
-					if !(_wpPos isEqualTo _lastWaypointOrder) then {
-						diag_log format ["FPV_AI_Drones: drone %1 following waypoint %2/%3 at %4 (%5m away)",
-							_uavInstance, _wpIndex, count waypoints _grp, _wpPos, round (_uavInstance distance2D _wpPos)];
-					};
-					_uavInstance doMove _wpPos;
-					_lastWaypointOrder = _wpPos;
-					_lastWaypointOrderTime = diag_tickTime;
+				_grp setCurrentWaypoint [_grp, _wpIdx];
+			};
+			private _wpPos = waypointPosition (_wps select _wpIdx);
+			private _f = [_wps, _wpIdx] call _followingWp;
+			private _nextPos = if (_f > 0) then { waypointPosition (_wps select _f) } else { [] };
+			// Fly to it and on to the next - or, past the last one, stay parked over it.
+			// In one go between two frames, and only if the handler hasn't just turned again.
+			isNil {
+				if ((_cruiseState get "turns") == _turnsSeen) then {
+					_cruiseState set ["dest", _wpPos];
+					_cruiseState set ["next", _nextPos];
 				};
+			};
+			// Re-issue only when the waypoint moved, or every 10s as a backstop -
+			// spamming move orders is what makes the flight look wobbly.
+			if (!(_wpPos isEqualTo _lastWaypointOrder) || { diag_tickTime > _lastWaypointOrderTime + 10 }) then {
+				if !(_wpPos isEqualTo _lastWaypointOrder) then {
+					diag_log format ["FPV_AI_Drones: drone %1 following waypoint %2/%3 at %4 (%5m away)",
+						_uavInstance, _wpIdx, count waypoints _grp, _wpPos, round (_uavInstance distance2D _wpPos)];
+				};
+				_uavInstance doMove _wpPos;
+				_lastWaypointOrder = _wpPos;
+				_lastWaypointOrderTime = diag_tickTime;
 			};
 		};
 	};
@@ -344,6 +404,34 @@ private _attackSpeed = if (_attackSpeedKmh > 0) then { (_attackSpeedKmh / 3.6) m
     if ("Man" in _unitKinds) then { 40 } else { 50 }
 };
 
+// Accuracy: each run is rolled once against the hit chance. A miss is aimed at the
+// ground beside the target, a few blast radii of the payload away so the miss is a
+// miss, and the payload goes off there.
+private _miss = [];
+if ((random 100) >= _hitChance) then {
+    private _blastRadius = 0;
+    { _blastRadius = _blastRadius max getNumber (configFile >> "CfgAmmo" >> _x >> "indirectHitRange"); } forEach (_customAmmo splitString ", ");
+    private _off = ((_blastRadius * 2.5) max 6) + random 4;
+    private _tp = getPosASL _target;
+    private _toT = _tp vectorDiff (getPosASL _uavInstance);
+    private _fwd = vectorNormalized [_toT select 0, _toT select 1, 0];
+    if (_fwd isEqualTo [0, 0, 0]) then { _fwd = [0, 1, 0]; };
+    // Beside the target or short of it - never beyond it, or the dive would cross it.
+    // Of those spots, the one farthest from anyone else near the target: a miss on one
+    // soldier must not come down in the middle of the rest of the squad.
+    private _others = ((ASLToAGL _tp) nearEntities [["Man", "LandVehicle", "Air", "Ship"], _off * 2 + 10]) select { alive _x && { _x != _uavInstance } };
+    private _bestClear = -1;
+    {
+        private _a = _x + (random 20) - 10;   // degrees from straight ahead
+        private _cand = [((_fwd select 0) * cos _a) - ((_fwd select 1) * sin _a), ((_fwd select 0) * sin _a) + ((_fwd select 1) * cos _a), 0] vectorMultiply _off;
+        private _spot = _tp vectorAdd _cand;
+        private _clear = _off * 2;
+        { _clear = _clear min (_spot distance2D (getPosASL _x)); } forEach _others;
+        if (_clear > _bestClear) then { _bestClear = _clear; _miss = _cand; };
+    } forEach ([90, -90, 135, -135, 180] call BIS_fnc_arrayShuffle);
+    diag_log format ["FPV_AI_Drones: drone %1 will miss (accuracy %2%): aiming %3m from %4, %5m from anyone", _uavInstance, _hitChance, round vectorMagnitude _miss, _target, round _bestClear];
+};
+
 // Fallback trigger radius around the target's centre mass. Vehicles are normally
 // set off on contact instead (see the trigger in _guide): a radius big enough for a
 // tank's hull left the charge ~2 m short of it - crew killed, hull 20% damaged.
@@ -381,9 +469,14 @@ private _guide = {
         removeMissionEventHandler ["EachFrame", _thisEventHandler];
     };
 
-    private _aimOffset = [0, 0, 1];   // centre mass, not the ground under the target
     private _last = _s get "lastPos";
-    private _tPos = (getPosASL _target) vectorAdd _aimOffset;
+    // The point the run is flown at: the target's centre mass (not the ground under
+    // it) - or for a planned miss, the ground beside it, moving with it.
+    private _miss = _s get "miss";
+    private _tPos = if (_miss isEqualTo []) then { (getPosASL _target) vectorAdd [0, 0, 1] } else {
+        private _g = (getPosASL _target) vectorAdd _miss;
+        [_g select 0, _g select 1, getTerrainHeightASL _g]
+    };
 
     // Drone gone: it hit something, its own warhead went off and the Crocus mod
     // deleted it. Next to the target that is the hit we wanted, so set the payload
@@ -451,11 +544,14 @@ private _guide = {
     };
     if (_fire isNotEqualTo []) exitWith { [_s, _fire, false] call (_s get "arm"); };
 
-    // --- steering: lead the target - aim where it will be when we get there
+    // --- steering: lead the target - aim where it will be when we get there. Time to
+    // get there at the speed the drone is actually doing: in a dive it can be well under
+    // top speed, and leading by top speed left it behind a crossing car (Braking Time 2).
     private _tVel = velocity _target;
     private _aim = _tPos;
+    private _closing = (vectorMagnitude _v) max (_speed * 0.5);
     for "_i" from 1 to 2 do {
-        _aim = _tPos vectorAdd (_tVel vectorMultiply (((_aim vectorDistance _p) / _speed) min 6));
+        _aim = _tPos vectorAdd (_tVel vectorMultiply (((_aim vectorDistance _p) / _closing) min 6));
     };
     private _toAim = _aim vectorDiff _p;
     private _toAimH = [_toAim select 0, _toAim select 1, 0];
@@ -488,20 +584,56 @@ private _guide = {
     };
     private _popUp = _d2 < 30 && { !_clear } && { diag_tickTime < (_s get "blockedAt") + 3 };
 
+    // Missed: low, the aim point not ahead any more (the target swerved, or the drone
+    // overshot), and further away than the drone is high - no dive left that reaches it.
+    // Then it pulls up and makes a new pass instead of flying on into the ground next
+    // to the target (Braking Time 2: a drone went down 19 m from a car that had driven
+    // past it, and was lost without going off). Straight over the target is not a miss.
+    // "Low" grows with the sink rate - stopping a 22 m/s sink takes ~12 m at 25 m/s2 -
+    // and when there is no longer room to stop sinking, pulling up is pointless: it
+    // keeps diving at the target, so at least the payload goes off near it.
+    private _agl = (_p select 2) - _ground;
+    private _vMag = vectorMagnitude _v;
+    private _sink = (-(_v select 2)) max 0;
+    private _missed = _vMag > 5 && { _d2 > _agl }
+        && { _agl < ((((_sink ^ 2) / (1.6 * (_s get "accel"))) + 3) max 8) }
+        && { _agl > (((_sink ^ 2) / (2 * (_s get "accel"))) + 1.5) }
+        && { ((_v vectorDotProduct _toAim) / (_vMag * ((vectorMagnitude _toAim) max 0.1))) < 0.3 };
+
     private _vDes = [];
-    if (_d2 < 30 && { !_popUp }) then {
-        // Terminal: straight at it.
-        _vDes = (vectorNormalized _toAim) vectorMultiply _speed;
+    if (_d2 < 30 && { !_popUp } && { !_missed }) then {
+        // Terminal: straight at it - as fast as the drone can still turn onto it. The arc
+        // from its heading onto the aim point has radius d / (2 sin a), and flying it takes
+        // v^2 / radius of its acceleration. A heavy drone that arrives fast and high slows
+        // down to tip into the dive, as a pilot would (Braking Time 2: still 31 m/s forward
+        // 12 m over a tank, and it went past). Never slower than the target + 10 m/s: a
+        // drone that slowed below a car's speed circled it and never caught it.
+        private _dAim = (vectorMagnitude _toAim) max 0.1;
+        private _cosA = if (_vMag > 1) then { (_v vectorDotProduct _toAim) / (_vMag * _dAim) } else { 1 };
+        private _sinA = if (_cosA < 0) then { 1 } else { sqrt ((1 - (_cosA ^ 2)) max 0) };
+        private _vTurn = if (_sinA > 0.01) then { sqrt (0.8 * (_s get "accel") * _dAim / (2 * _sinA)) } else { _speed };
+        _vDes = (_toAim vectorMultiply (1 / _dAim)) vectorMultiply ((_speed min _vTurn) max (((vectorMagnitude _tVel) + 10) max 12));
+        _s set ["wantAgl", 2];
     } else {
         // Glide path: down at ~1:3 to the dive's entry point (30 m out, _termH up),
         // never higher above the target than the search height (unless the dive needs
         // it), never lower than 5 m over the ground on the way.
+        // The descent may be as fast as the slope needs plus some to catch up: capped
+        // at 15 m/s - less than the slope's 17.5 at 180 km/h - drones reached the dive
+        // entry 10 m too high, which a heavy drone could not make up (it overshot).
         private _slope = 0.35;
         private _ceiling = (_s get "cruise") max _termH;
-        private _hRel = (_termH + (((_d2 - 30) max 0) * _slope)) min _ceiling;
-        private _onSlope = _d2 > 30 && { _hRel < _ceiling };
+        // It also needs room to set up its sink rate - at Braking Time 2, 0.7 s and 35 m.
+        // Flying the slope from where it starts, the drone reached a dive entry 18 m up
+        // at 27 m and passed 10 m over a tank behind a building. So it follows the slope
+        // as it will be half that distance on, and is on it by the time it matters.
+        private _vH = vectorMagnitude [_v select 0, _v select 1, 0];
+        private _dSlope = _d2 - (_vH * ((_slope * _speed) / (_s get "accel")) / 2);
+        private _hRel = (_termH + (((_dSlope - 30) max 0) * _slope)) min _ceiling;
+        private _onSlope = _dSlope > 30 && { _hRel < _ceiling };
         private _zDes = ((_aim select 2) + _hRel) max (_ground + 5);
-        private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _speed] select _onSlope)) max -15) min 15;
+        _s set ["wantAgl", (_zDes - _ground) max 2];
+        private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _speed] select _onSlope)) max -((_slope * _speed) + 8)) min 15;
         private _vh = sqrt (((_speed ^ 2) - (_vz ^ 2)) max 0);
         // Still lifting off: straight up until clear of the ground (dragging along it
         // counts as a hit - see the attitude note below), then ease into going flat out.
@@ -516,6 +648,9 @@ private _guide = {
         if ((lineIntersectsSurfaces [_p, _ahead, _uav, _target, true, 1, "GEOM", "NONE"]) isNotEqualTo []) then {
             _vDes = [(_vDes select 0) * 0.5, (_vDes select 1) * 0.5, (_vDes select 2) max 10];
         };
+        // After a miss, stop sinking before anything else: all of the drone's
+        // acceleration goes into climbing until it is, then it turns back for the pass.
+        if (_missed && { (_v select 2) < 0 }) then { _vDes = [_v select 0, _v select 1, 4]; };
     };
 
     // Ease towards it rather than snapping: at most "accel" m/s per second of change.
@@ -537,16 +672,16 @@ private _guide = {
         _s set ["frames", _n];
         if (_n <= 5 || { (_p vectorDistance _tPos) < 20 } || { diag_tickTime > (_s getOrDefault ["traceAt", 0]) }) then {
             _s set ["traceAt", diag_tickTime + 0.5];
-            diag_log format ["FPV_AI_Drones: trace %1 f%2 dt=%3 agl=%4 v=%5 (%6 m/s) vDes=%7 d3=%8 d2aim=%9 termH=%10 clear=%11 popUp=%12",
+            diag_log format ["FPV_AI_Drones: trace %1 f%2 dt=%3 agl=%4 v=%5 (%6 m/s) vDes=%7 d3=%8 d2aim=%9 termH=%10 clear=%11 popUp=%12 missed=%13",
                 _uav, _n, _dt toFixed 3, ((_p select 2) - _ground) toFixed 1, _v apply { _x toFixed 1 }, (vectorMagnitude _v) toFixed 1,
-                _vDes apply { _x toFixed 1 }, (_p vectorDistance _tPos) toFixed 1, _d2 toFixed 1, _termH, _clear, _popUp];
+                _vDes apply { _x toFixed 1 }, (_p vectorDistance _tPos) toFixed 1, _d2 toFixed 1, _termH, _clear, _popUp, _missed];
         };
     };
 };
 
 private _state = createHashMapFromArray [
     ["uav", _uavInstance], ["target", _target], ["phase", "run"], ["abort", ""], ["result", ""],
-    ["speed", _attackSpeed], ["accel", 60], ["cruise", _initialSearchHeight],
+    ["speed", _attackSpeed], ["accel", _attackSpeed / _brakingTime], ["cruise", _initialSearchHeight], ["miss", _miss],
     ["blast", _blastRange], ["ammo", _customAmmo splitString ", "],
     ["lastPos", getPosASL _uavInstance], ["arm", _arm], ["separate", _separation],
     ["charges", []], ["blastPos", []], ["impacted", false]
@@ -568,6 +703,7 @@ private _best = _uavInstance distance _target;
 private _bestAt = diag_tickTime;
 private _lastLook = diag_tickTime;
 private _lastOrder = -1e9;
+private _pilotAgl = _initialSearchHeight;
 while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
     sleep 0.25;
     // Drone just died: the handler decides whether that was the hit. Don't race it.
@@ -614,6 +750,14 @@ while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
             _uavInstance doMove (getPosATL _target);
             _lastOrder = diag_tickTime;
         };
+        // Same for height: the pilot holds the height it was given (search height), and
+        // between frames its rotors pushed back against the glide - a commanded 13.5 m/s
+        // more sink over half a second came out as 10. Give it the height the run wants.
+        private _wantAgl = round (_state getOrDefault ["wantAgl", _initialSearchHeight]);
+        if (abs (_wantAgl - _pilotAgl) >= 2) then {
+            _uavInstance flyInHeight [_wantAgl, true];
+            _pilotAgl = _wantAgl;
+        };
     };
 };
 
@@ -627,7 +771,8 @@ if ((_state get "result") == "detonated") then {
     // means the explosives are being duplicated across machines again.
     diag_log format ["FPV_AI_Drones: drone %1 detonating %2 on %3 at %4m%5 on machine %6, %7s after acquiring the target",
         _uavName, _state get "ammo", _target, round ((_state get "blastPos") vectorDistance (getPosASL _target)),
-        ["", " (drone impacted first)"] select (_state get "impacted"), clientOwner, (diag_tickTime - _acquiredAt) toFixed 1];
+        (["", " (drone impacted first)"] select (_state get "impacted")) + (["", " - a planned miss"] select ((_state get "miss") isNotEqualTo [])),
+        clientOwner, (diag_tickTime - _acquiredAt) toFixed 1];
 } else {
     diag_log format ["FPV_AI_Drones: drone %1 broke off its attack run: %2", _uavName, _state get "result"];
 };

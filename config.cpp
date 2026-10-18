@@ -118,6 +118,27 @@ class CfgVehicles {
                 typeName = "NUMBER";
                 defaultValue = "180";
             };
+            class CruiseSpeed: Edit {
+                property = "FPV_AI_Drones_CruiseSpeed";
+                displayName = "Cruise Speed (km/h)";
+                tooltip = "Speed on waypoints, before the drone has found a target. Default 126 km/h.";
+                typeName = "NUMBER";
+                defaultValue = "126";
+            };
+            class BrakingTime: Edit {
+                property = "FPV_AI_Drones_BrakingTime";
+                displayName = "Braking Time (s)";
+                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 1.5.";
+                typeName = "NUMBER";
+                defaultValue = "1.5";
+            };
+            class HitChance: Edit {
+                property = "FPV_AI_Drones_HitChance";
+                displayName = "Accuracy (%)";
+                tooltip = "Chance that an attack run is aimed at the target itself. The others miss: the drone comes down beside the target, a few blast radii away, and its payload goes off there. 100 = no planned misses (a swerving target can still make it miss). Default 100.";
+                typeName = "NUMBER";
+                defaultValue = "100";
+            };
             class AllowObjectParent: Checkbox {
                 property = "FPV_AI_Drones_AllowObjectParent";
                 displayName = "Allow Object Parent";
@@ -208,6 +229,27 @@ class CfgVehicles {
                 typeName = "NUMBER";
                 defaultValue = "180";
             };
+            class CruiseSpeed: Edit {
+                property = "FPV_AI_Drones_CruiseSpeed";
+                displayName = "Cruise Speed (km/h)";
+                tooltip = "Speed on waypoints, before the drone has found a target. Default 126 km/h.";
+                typeName = "NUMBER";
+                defaultValue = "126";
+            };
+            class BrakingTime: Edit {
+                property = "FPV_AI_Drones_BrakingTime";
+                displayName = "Braking Time (s)";
+                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 1.5.";
+                typeName = "NUMBER";
+                defaultValue = "1.5";
+            };
+            class HitChance: Edit {
+                property = "FPV_AI_Drones_HitChance";
+                displayName = "Accuracy (%)";
+                tooltip = "Chance that an attack run is aimed at the target itself. The others miss: the drone comes down beside the target, a few blast radii away, and its payload goes off there. 100 = no planned misses (a swerving target can still make it miss). Default 100.";
+                typeName = "NUMBER";
+                defaultValue = "100";
+            };
             class AllowObjectParent: Checkbox {
                 property = "FPV_AI_Drones_AllowObjectParent";
                 displayName = "Allow Object Parent";
@@ -296,6 +338,27 @@ class CfgVehicles {
                 tooltip = "Top speed of the attack run once the drone has a target. Default 180 km/h for Anti-Tank, 144 for Anti-Personnel. Slower is easier to dodge or shoot down; faster turns wider.";
                 typeName = "NUMBER";
                 defaultValue = "144";
+            };
+            class CruiseSpeed: Edit {
+                property = "FPV_AI_Drones_CruiseSpeed";
+                displayName = "Cruise Speed (km/h)";
+                tooltip = "Speed on waypoints, before the drone has found a target. Default 126 km/h.";
+                typeName = "NUMBER";
+                defaultValue = "126";
+            };
+            class BrakingTime: Edit {
+                property = "FPV_AI_Drones_BrakingTime";
+                displayName = "Braking Time (s)";
+                tooltip = "Seconds the drone needs to stop from full speed - how heavy it feels. Higher: slower to brake and turn, wider turns at waypoints, and a target that swerves late can get away. Lower: more agile. Default 1.5.";
+                typeName = "NUMBER";
+                defaultValue = "1.5";
+            };
+            class HitChance: Edit {
+                property = "FPV_AI_Drones_HitChance";
+                displayName = "Accuracy (%)";
+                tooltip = "Chance that an attack run is aimed at the target itself. The others miss: the drone comes down beside the target, a few blast radii away, and its payload goes off there. 100 = no planned misses (a swerving target can still make it miss). Default 100.";
+                typeName = "NUMBER";
+                defaultValue = "100";
             };
             class AllowObjectParent: Checkbox {
                 property = "FPV_AI_Drones_AllowObjectParent";

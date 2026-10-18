@@ -69,6 +69,9 @@ private _enableChat = ["EnableChatMessages", false] call _setting;
 private _takeOverAllOfType = ["TakeOverAllOfType", false] call _setting;
 private _targetSides = ["TargetSides", "ENEMIES"] call _setting;   // who to attack - see fpvLogic _isHostile
 private _attackSpeed = ["AttackSpeed", -1] call _setting;   // km/h; -1 = fpvLogic's default for the target kind
+private _cruiseSpeed = ["CruiseSpeed", -1] call _setting;   // km/h on waypoints; -1 = fpvLogic's default
+private _brakingTime = ["BrakingTime", -1] call _setting;   // s from full speed to a stop; -1 = fpvLogic's default
+private _hitChance = ["HitChance", -1] call _setting;       // %; -1 = 100
 
 // The module's area: drones within this distance of where it was placed are
 // picked up - at placement, and any placed there later (a Zeus "drone station").
@@ -77,8 +80,8 @@ private _center = getPosATL _logic;   // fixed: a module attached to a drone sho
 
 if (_enableChat) then {
     private _msg = format [
-        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, TargetSides: %3, AttackSpeed: %4 km/h, AllowObjectParent: %5, CustomAmmo: %6, TargetDetectionRange: %7",
-        _unitKinds, _targetSource, _targetSides, _attackSpeed, _allowObjectParent, _customAmmo, _targetDetectionRange
+        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, TargetSides: %3, AttackSpeed: %4 km/h, AllowObjectParent: %5, CustomAmmo: %6, TargetDetectionRange: %7, CruiseSpeed: %8 km/h, BrakingTime: %9 s, Accuracy: %10%",
+        _unitKinds, _targetSource, _targetSides, _attackSpeed, _allowObjectParent, _customAmmo, _targetDetectionRange, _cruiseSpeed, _brakingTime, _hitChance
     ];
     // Runs on the server, so it has to be broadcast to reach any player.
     _msg remoteExec ["systemChat", 0];
@@ -201,6 +204,9 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
     _enableChat,
     _targetSides,
     _attackSpeed,
+    _cruiseSpeed,
+    _brakingTime,
+    _hitChance,
     _key,
     _tag
 ] spawn {
@@ -229,6 +235,9 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
         "_enableChat",
         "_targetSides",
         "_attackSpeed",
+        "_cruiseSpeed",
+        "_brakingTime",
+        "_hitChance",
         "_key",
         "_tag"
     ];
@@ -327,7 +336,10 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 _initialSearchHeight,
                 _enableChat,
                 _targetSides,
-                _attackSpeed
+                _attackSpeed,
+                _cruiseSpeed,
+                _brakingTime,
+                _hitChance
             ] spawn FPV_AI_Drones_fnc_fpvLogic;
         } forEach _active;
     };

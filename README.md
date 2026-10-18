@@ -106,6 +106,9 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Initial Search Height | 30 | 50 | Cruise height while hunting and flying waypoints (m); also the most the attack run climbs above its target |
 | Target Detection Range | 200 | 200 | Acquisition range. A target is chased until it's 1.5x this far away |
 | Attack Speed | 180 | 144 | Top speed of the attack run (km/h) |
+| Cruise Speed | 126 | 126 | Speed on waypoints, before a target is found (km/h) |
+| Braking Time | 1.5 | 1.5 | Seconds to stop from full speed - how heavy the drone is. Acceleration for braking, speeding up and turning = top speed / braking time. Higher: wider turns, slower to react, a target that swerves late can get away |
+| Accuracy | 100 | 100 | % of attack runs aimed at the target. The rest come down beside it, a few blast radii of the payload away (2.5x the payload's blast radius + 0-4 m, at least 6 m) |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 
@@ -119,7 +122,12 @@ Once a drone has a target, an `EachFrame` handler flies it - not the AI pilot, w
 near every move point and could not catch a moving vehicle:
 
 - 180 km/h for anti-vehicle drones, 144 km/h for anti-personnel (module setting **Attack Speed**),
-  steered every frame
+  steered every frame - but with weight: it speeds up, brakes and turns at most at top speed /
+  **Braking Time** per second, so it swings wide and a target that swerves at the last moment
+  can get away
+- with **Accuracy** below 100 %, some runs are planned misses: the drone comes down beside the
+  target or short of it (never beyond, so the dive doesn't cross it), 2.5x the payload's blast
+  radius + 0-4 m away (at least 6 m), on the side farthest from anyone else near the target
 - keeps 12 m clear of other drones (a bump sets a Crocus off) until the final dive
 - aims where a moving target will be (lead), not where it is
 - glides down at about 1:3 to a dive entry point 30 m out; if a building or trees block the
@@ -130,7 +138,9 @@ near every move point and could not catch a moving vehicle:
 - spreads a swarm out: each other drone already attacking a target makes it count as 150 m
   further away, so drones pick different targets
 
-Waypoints (e.g. given in Zeus) are flown the same way at ~35 m/s while there's no target.
+Waypoints (e.g. given in Zeus) are flown the same way at **Cruise Speed** (126 km/h) while there's
+no target. Before each waypoint the drone brakes for the turn - harder the sharper the turn, and
+earlier the longer the Braking Time - and curves on to the next leg instead of turning on the spot.
 
 With the default "Mission's enemies", targeting uses `BIS_fnc_sideIsEnemy`, so it respects the mission's actual side relations —
 independent/resistance works, not just BLUFOR vs OPFOR.
@@ -162,7 +172,10 @@ if (isServer) then {
         50,                         // initial search height
         false,                      // enable chat
         "ENEMIES",                  // target sides: ENEMIES | EAST | WEST | GUER | NOTOWN (optional)
-        144                         // attack speed in km/h (optional, default 180 vehicles / 144 infantry)
+        144,                        // attack speed in km/h (optional, default 180 vehicles / 144 infantry)
+        126,                        // cruise speed on waypoints in km/h (optional)
+        1.5,                        // braking time in s (optional): how heavy the drone feels
+        100                         // accuracy in % (optional): the other runs miss on purpose
     ] spawn FPV_AI_Drones_fnc_fpvLogic;
 };
 ```
@@ -241,8 +254,16 @@ Stages: empty Eden-placed drone (1), AP vs infantry (2), Zeus-style attached mod
 same-class drone that must be left alone (3), module placed on the ground near a drone (4), module
 with no drone (5), plain-drone waypoint baselines (6, info only), managed drone sent by waypoint (7),
 module started through the Zeus code path from the player's machine (8), Independent drone (9),
-Target Sides (10), tank driving past (11). An attempt that makes no progress for 30 s is stopped
-early instead of running into its timeout.
+Target Sides (10), tank driving past (11), Accuracy 0 % - AT and AP drones must miss (12). An
+attempt that makes no progress for 30 s is stopped early instead of running into its timeout.
+
+```
+python tests/run_tests.py --headless --bench 1 --set BrakingTime=3 HitChance=50
+```
+
+`--set` gives every module in the run these settings (the names are the module attribute classes
+in `config.cpp`), so tuning can be compared without editing the mission. `--headless` runs only a
+dedicated server - no game window, nothing takes focus - and reads the results from the server log.
 
 Only CBA and the Crocus drones are loaded - no AI mods, which change drone behaviour. Singleplayer
 pauses when the game window loses focus, so keep it in front during an SP run.

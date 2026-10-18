@@ -9,6 +9,11 @@
     python tests/run_tests.py --quick            # the attack-run stages 1, 2, 7, 10, 11
     python tests/run_tests.py --compat B_UAFPV B_UAFPV:PG7VL --extra-mods <path to @mod>
                                                  # another mod's drones: MOVE, MOVE, CYCLE loop, then an enemy car
+    python tests/run_tests.py --bench 1 --set BrakingTime=2.5 HitChance=50
+                                                 # every module in the run gets these settings (A/B a setting)
+    python tests/run_tests.py --headless --bench 1
+                                                 # just a minimized dedicated server, no game window: runs while
+                                                 # you use the PC, or next to another tool recording the screen
 
 Both modes play the same mission (tests/FPVTest.VR) with a chase camera, and
 write results as FPV_TEST lines to the RPT, which this script follows. They
@@ -89,10 +94,11 @@ def stop_test_server():
             say(f"Stopped test server (pid {pid}).")
 
 
-def stop_game():
-    for pid, _ in processes("arma3_x64.exe"):
-        kill(pid)
-    time.sleep(3)
+def stop_own(proc):
+    """Stops a game or server this script started - never anyone else's (the ac-lab
+    tools run their own games and servers next to these tests)."""
+    if proc and proc.poll() is None:
+        kill(proc.pid)
 
 
 def udp_listening(port):
@@ -100,11 +106,9 @@ def udp_listening(port):
     return re.search(rf":{port}\s", out) is not None
 
 
-def game_window():
-    """The game's main window handle, or None."""
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq arma3_x64.exe", "/NH", "/FO", "CSV"],
-                         capture_output=True, text=True).stdout
-    pids = {int(row.split('","')[1]) for row in out.splitlines() if row.lower().startswith('"arma3_x64.exe"')}
+def game_window(pid):
+    """The main window handle of the game with this process id, or None."""
+    pids = {pid}
     found = []
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -119,10 +123,10 @@ def game_window():
     return found[0] if found else None
 
 
-def focus_game():
+def focus_game(pid):
     """Brings the game to the front. Singleplayer pauses while its window is in the background,
     and anything can take the focus mid-run - an editor opening a changed file, a notification."""
-    hwnd = game_window()
+    hwnd = game_window(pid)
     if not hwnd or user32.GetForegroundWindow() == hwnd:
         return
     # Windows only lets the foreground process hand the focus over; a key event makes this one count.
@@ -142,6 +146,8 @@ class Runner:
         self.a = args
         self.mods = ";".join(MODS + args.extra_mods)
         self.mission_name = f"FPVTest.{args.map}"   # the folder suffix picks the world
+        self.game = None     # the game / server this run started (Popen)
+        self.server = None
 
     def start_game(self, extra):
         # -window: a fullscreen game that starts behind another window (the server console
@@ -150,7 +156,13 @@ class Runner:
                 "-skipIntro", "-noSplash", "-world=empty", "-showScriptErrors"] + extra
         if not self.a.fullscreen:
             argv.append("-window")
-        subprocess.Popen(argv, cwd=self.a.arma_dir)
+        self.game = subprocess.Popen(argv, cwd=self.a.arma_dir)
+
+    def game_running(self):
+        return self.game is not None and self.game.poll() is None
+
+    def server_running(self):
+        return self.server is not None and self.server.poll() is None
 
     def copy_mission(self, parent):
         dest = os.path.join(self.a.arma_dir, parent, self.mission_name)
@@ -169,8 +181,8 @@ class Runner:
         deadline = time.time() + self.a.timeout_minutes * 60
         start_deadline = time.time() + 5 * 60
         while time.time() < deadline:
-            if not self.a.no_focus and (keep_focus or not focused) and game_window():
-                focus_game()
+            if not self.a.no_focus and self.game_running() and (keep_focus or not focused) and game_window(self.game.pid):
+                focus_game(self.game.pid)
                 focused = True
             rpt = find_rpt()
             if rpt:
@@ -214,7 +226,7 @@ class Runner:
         self.start_game([f"-init=playMission['','{self.mission_name}',true]"])
         # Singleplayer pauses in the background: keep the game in front for the whole run.
         return self.watch("SP", lambda: newest(os.path.join(CLIENT_LOGS, "arma3_x64_*.rpt"), since),
-                          lambda: running("arma3_x64.exe"), keep_focus=True)
+                          self.game_running, keep_focus=True)
 
     def mp_run(self):
         say(f"== Multiplayer run (local dedicated server on port {PORT}) ==", CYAN)
@@ -245,17 +257,21 @@ class Missions
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 7   # SW_SHOWMINNOACTIVE
-        subprocess.Popen([os.path.join(self.a.arma_dir, "arma3server_x64.exe"), f"-port={PORT}", f"-config={server_cfg}",
-                          f"-profiles={WORK_DIR}", "-name=fpvtest", f"-mod={self.mods}", "-autoInit"],
-                         cwd=self.a.arma_dir, startupinfo=si, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        self.server = subprocess.Popen([os.path.join(self.a.arma_dir, "arma3server_x64.exe"), f"-port={PORT}", f"-config={server_cfg}",
+                                        f"-profiles={WORK_DIR}", "-name=fpvtest", f"-mod={self.mods}", "-autoInit"],
+                                       cwd=self.a.arma_dir, startupinfo=si, creationflags=subprocess.CREATE_NEW_CONSOLE)
         listen_deadline = time.time() + 120
         while not udp_listening(PORT):
             if time.time() > listen_deadline:
                 sys.exit(f"Server did not open port {PORT} within 2 minutes. Check {WORK_DIR} for its RPT.")
-            if not running("arma3server_x64.exe"):
+            if not self.server_running():
                 sys.exit(f"Server exited during startup. Check {WORK_DIR} for its RPT.")
             time.sleep(2)
         time.sleep(5)   # port opens slightly before the mission is ready
+
+        if self.a.headless:
+            # No one joins: the mission starts on its own (FPVT_headless) and nothing opens on screen.
+            return self.watch("MP", lambda: newest(os.path.join(WORK_DIR, "*.rpt")), self.server_running)
 
         if self.a.server_only:
             # Hands-on MP: the player joins from the normal Arma launcher, like real users do.
@@ -265,7 +281,7 @@ class Missions
             say("  3. You get Zeus ~10s after joining - press Y")
             return {"passed": 0, "total": 0, "rpt": None}
         self.start_game(["-connect=127.0.0.1", f"-port={PORT}", f"-password={PASSWORD}"])
-        result = self.watch("MP", lambda: newest(os.path.join(WORK_DIR, "*.rpt")), lambda: running("arma3server_x64.exe"))
+        result = self.watch("MP", lambda: newest(os.path.join(WORK_DIR, "*.rpt")), self.server_running)
 
         # Detonations must happen on the server only. One in the CLIENT log means
         # explosives are being created on more than one machine again.
@@ -300,14 +316,30 @@ class Missions
         # set, otherwise everything from --start-stage on. Copied into each mission as testconfig.sqf.
         if a.quick and not a.stages:
             a.stages = [1, 2, 7, 10, 11]
+        if a.headless:
+            if a.mode not in (None, "MP"):
+                sys.exit("--headless is a dedicated server run: it takes no --mode, or --mode MP.")
+            a.mode, a.no_focus = "MP", True
         if a.mode is None:
             a.mode = "MP" if a.bench > 0 else "SP" if a.compat else "Both"
         compat = [(c.split(":", 1) + [""])[:2] for c in a.compat]
+        settings = []
+        for kv in a.set:
+            k, _, v = kv.partition("=")
+            try:
+                float(v)
+            except ValueError:
+                v = '"' + v.replace('"', '""') + '"'   # not a number: an SQF string
+            settings.append((k, v))
+        if settings:
+            say("Module settings: " + ", ".join(f"{k}={v}" for k, v in settings), CYAN)
         self.test_config = "\n".join([
             f"FPVT_startStage = {a.start_stage or 1};",
             f"FPVT_stages = [{','.join(map(str, a.stages))}];",
             f"FPVT_bench = {a.bench};",
             "FPVT_compat = [" + ",".join(f'["{t}","{p}"]' for t, p in compat) + "];",
+            f"FPVT_headless = {'true' if a.headless else 'false'};",
+            "FPVT_set = [" + ",".join(f'["{k}",{v}]' for k, v in settings) + "];",
         ]) + "\n"
         if a.bench > 0:
             say(f"Speed bench: {a.bench} rounds", CYAN)
@@ -316,24 +348,29 @@ class Missions
         elif a.stages:
             say("Stages: " + ", ".join(map(str, a.stages)), CYAN)
 
-        if not a.server_only and running("arma3_x64.exe"):
-            sys.exit("Arma 3 is already running. Close it first.")
+        # A second game window would land on top of whatever else is running - and in any
+        # screen recording of it (the ac-lab recorder). A headless run opens no window.
+        if not a.server_only and not a.headless and running("arma3_x64.exe"):
+            sys.exit("Arma 3 is already running. Close it first, or use --headless (no game window).")
         stop_test_server()
-        if running("arma3server_x64.exe"):
-            sys.exit("An Arma 3 server that isn't a test server is running. Stop it first.")
+        if udp_listening(PORT):
+            sys.exit(f"UDP port {PORT} is in use by something else. Stop it first.")
 
         if not a.no_build:
             say("== Building mod ==", CYAN)
-            subprocess.run([sys.executable, os.path.join(REPO, "build.py")], check=True, stdout=subprocess.DEVNULL)
+            # --no-release: the release folder is in use by the ac-lab matches; only a release replaces it.
+            subprocess.run([sys.executable, os.path.join(REPO, "build.py"), "--no-release"], check=True, stdout=subprocess.DEVNULL)
 
         modes = ["SP", "MP"] if a.mode == "Both" else [a.mode]
         results = {}
         for m in modes:
             results[m] = self.sp_run() if m == "SP" else self.mp_run()
             if m != modes[-1] or not a.keep_open:
-                time.sleep(12)   # time to read the scoreboard
-                stop_game()
-                stop_test_server()
+                if not a.headless:
+                    time.sleep(12)   # time to read the scoreboard
+                stop_own(self.game)
+                stop_own(self.server)
+                time.sleep(3)
 
         print()
         all_ok = True
@@ -376,12 +413,16 @@ def parse():
     p.add_argument("--compat", nargs="+", default=[], metavar="CLASS[:PAYLOAD]",
                    help="another mod's drone classes: each flies a MOVE, MOVE, CYCLE loop, then must kill an enemy car (default --mode SP)")
     p.add_argument("--extra-mods", nargs="+", default=[], metavar="PATH", help="more mods to load (absolute, or relative to the game folder)")
+    p.add_argument("--set", nargs="+", default=[], metavar="SETTING=VALUE",
+                   help="module settings for every module in the run, e.g. --set BrakingTime=2.5 HitChance=50")
     p.add_argument("--keep-open", action="store_true")
     p.add_argument("--fullscreen", action="store_true", help="for hands-on sessions (Zeus needs the mouse captured); default is windowed")
     p.add_argument("--no-focus", action="store_true",
                    help="don't bring the game to the front (by default once at start, and in SP whenever it loses the focus)")
     p.add_argument("--server-only", action="store_true", help="MP: start just the server; join it yourself from the normal Arma launcher")
     p.add_argument("--manual", action="store_true", help="hands-on: straight to Zeus, game in your normal display mode, left open (default --mode MP)")
+    p.add_argument("--headless", action="store_true",
+                   help="just a minimized dedicated server, no game window, no player (stage 8 needs one and is skipped)")
     p.add_argument("--timeout-minutes", type=int, default=20)
     p.add_argument("--profile-name", default="vulcan420")
     p.add_argument("--arma-dir", default=r"E:\SteamLibrary\steamapps\common\Arma 3")

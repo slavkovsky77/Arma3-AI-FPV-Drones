@@ -2,6 +2,7 @@
 
     python build.py                    # build + sign with the current key
     python build.py --key-name v1_2    # start a new key version for a new release
+    python build.py --no-release       # build + sign only; leave x\FPV_AI_Drones_release alone (test runs)
 
 Re-sign after EVERY rebuild: the signature is over the built PBO, so a stale
 .bisign fails verification exactly as hard as no signature at all.
@@ -27,6 +28,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--key-name", default="fpv_ai_drones_v1_1")
     p.add_argument("--tools-dir", default=r"E:\SteamLibrary\steamapps\common\Arma 3 Tools")
+    # The release folder is loaded by other tools (the ac-lab matches use it as the published
+    # build), so only a release should replace it - not every test build.
+    p.add_argument("--no-release", action="store_true", help="don't re-stage the release folder")
     a = p.parse_args()
 
     src = os.path.dirname(os.path.abspath(__file__))                   # ...\FPV_AI_Drones\addons\fpv_ai_drones
@@ -100,6 +104,9 @@ def main():
     # .git, tests and notes). Never upload it: stage exactly what players need in a
     # separate folder and publish that.
     release = os.path.join(os.path.dirname(mod), "FPV_AI_Drones_release")
+    if a.no_release:
+        print(f"Built and signed {pbo} (release folder left as it is)")
+        return
     if os.path.isdir(release):
         shutil.rmtree(release)
     os.makedirs(os.path.join(release, "addons"))
