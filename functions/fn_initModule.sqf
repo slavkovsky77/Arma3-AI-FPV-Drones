@@ -74,7 +74,7 @@ private _brakingTime = ["BrakingTime", -1] call _setting;   // s from full speed
 private _hitChance = ["HitChance", -1] call _setting;       // %; -1 = 100
 private _secondPass = ["SecondPassChance", -1] call _setting;   // %; -1 = fpvLogic's default
 private _deleteDrone = ["DeleteDrone", true] call _setting;
-private _attackEmpty = ["AttackEmptyVehicles", false] call _setting;
+private _attackEmpty = ["AttackEmptyVehicles", true] call _setting;
 private _operatorRequired = ["OperatorRequired", false] call _setting;
 
 // The module's area: drones within this distance of where it was placed are
@@ -136,9 +136,20 @@ private _drones = _units select { [_x] call _isDroneCandidate };
 // "UAV Operator Required" (a Workshop wish): soldiers synced to the module are its
 // drones' operators. When the last of them is dead, the drones lose their pilot - see
 // the loop below. Not a drone's own UAV crew, which is in a drone.
+private _isOperatorCandidate = { params ["_u"]; !isNull _u && { _u isKindOf "CAManBase" } && { alive _u } && { !(unitIsUAV (vehicle _u)) } };
 private _operators = if (_operatorRequired) then {
-    _units select { _x isKindOf "CAManBase" && { alive _x } && { !(unitIsUAV (vehicle _x)) } }
+    _units select { [_x] call _isOperatorCandidate }
 } else { [] };
+// Zeus can't sync, and shows no settings for a module: there, dropping the module onto
+// a soldier makes him the operator, of the drones around him (a drone station, see 3.).
+private _attachedTo = attachedTo _logic;
+if ([_attachedTo] call _isOperatorCandidate) then {
+    _operatorRequired = true;
+    _operators pushBackUnique _attachedTo;
+    private _note = format ["FPV AI Drones: %1 is the operator of this module's drones - if he is killed, they come down.", name _attachedTo];
+    diag_log text _note;
+    _note remoteExec ["systemChat", 0];
+};
 if (_operatorRequired && { _operators isEqualTo [] }) then {
     private _note = "FPV AI Drones: 'UAV Operator Required' is on, but no soldier is synced to the module - its drones fly without one.";
     diag_log text _note;

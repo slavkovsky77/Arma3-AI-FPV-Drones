@@ -155,8 +155,8 @@ class CfgVehicles {
             class AttackEmptyVehicles: Checkbox {
                 property = "FPV_AI_Drones_AttackEmptyVehicles";
                 displayName = "Attack Empty Vehicles";
-                tooltip = "Also attack vehicles without a crew, if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first. Default off.";
-                defaultValue = "false";
+                tooltip = "Also attack vehicles with nobody inside (parked or abandoned), if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first; a vehicle whose crew was killed is not attacked again. Default on.";
+                defaultValue = "true";
             };
             class OperatorRequired: Checkbox {
                 property = "FPV_AI_Drones_OperatorRequired";
@@ -291,8 +291,8 @@ class CfgVehicles {
             class AttackEmptyVehicles: Checkbox {
                 property = "FPV_AI_Drones_AttackEmptyVehicles";
                 displayName = "Attack Empty Vehicles";
-                tooltip = "Also attack vehicles without a crew, if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first. Default off.";
-                defaultValue = "false";
+                tooltip = "Also attack vehicles with nobody inside (parked or abandoned), if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first; a vehicle whose crew was killed is not attacked again. Default on.";
+                defaultValue = "true";
             };
             class OperatorRequired: Checkbox {
                 property = "FPV_AI_Drones_OperatorRequired";
@@ -426,8 +426,8 @@ class CfgVehicles {
             class AttackEmptyVehicles: Checkbox {
                 property = "FPV_AI_Drones_AttackEmptyVehicles";
                 displayName = "Attack Empty Vehicles";
-                tooltip = "Also attack vehicles without a crew, if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first. Default off.";
-                defaultValue = "false";
+                tooltip = "Also attack vehicles with nobody inside (parked or abandoned), if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first; a vehicle whose crew was killed is not attacked again. Default on.";
+                defaultValue = "true";
             };
             class OperatorRequired: Checkbox {
                 property = "FPV_AI_Drones_OperatorRequired";

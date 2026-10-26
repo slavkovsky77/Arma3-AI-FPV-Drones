@@ -8,7 +8,7 @@ class EditorData
 	toggles=1;
 	class ItemIDProvider
 	{
-		nextID=7;
+		nextID=11;
 	};
 	class LayerIndexProvider
 	{
@@ -55,7 +55,7 @@ class Mission
 	};
 	class Entities
 	{
-		items=6;
+		items=9;
 		class Item0
 		{
 			dataType="Group";
@@ -153,16 +153,89 @@ class Mission
 			id=6;
 			type="FPV_AI_Drones_AP_Module";
 		};
+		class Item6
+		{
+			dataType="Group";
+			side="West";
+			class Entities
+			{
+				items=1;
+				class Item0
+				{
+					dataType="Object";
+					class PositionInfo
+					{
+						position[]={1150,5,600};
+						angles[]={0,1.5707964,0};
+					};
+					side="West";
+					flags=6;
+					class Attributes
+					{
+						name="fpvx_operator";
+					};
+					id=8;
+					type="B_soldier_UAV_F";
+				};
+			};
+			class Attributes
+			{
+			};
+			id=7;
+		};
+		class Item7
+		{
+			dataType="Object";
+			class PositionInfo
+			{
+				position[]={1200,5,600};
+			};
+			side="Empty";
+			flags=4;
+			class Attributes
+			{
+				name="fpvx_opDrone";
+			};
+			id=9;
+			type="B_UAV_01_F";
+		};
+		class Item8
+		{
+			dataType="Logic";
+			class PositionInfo
+			{
+				position[]={1190,5,600};
+			};
+			id=10;
+			type="FPV_AI_Drones_AT_Module";
+			class CustomAttributes
+			{
+				class Attribute0
+				{
+					property="FPV_AI_Drones_OperatorRequired";
+					expression="_this setVariable ['OperatorRequired',_value,true];";
+					class Value
+					{
+						class data
+						{
+							singleType="BOOL";
+							value=1;
+						};
+					};
+				};
+				nAttributes=1;
+			};
+		};
 	};
 	class Connections
 	{
 		class LinkIDProvider
 		{
-			nextID=3;
+			nextID=5;
 		};
 		class Links
 		{
-			items=3;
+			items=5;
 			class Item0
 			{
 				linkID=0;
@@ -188,6 +261,26 @@ class Mission
 				linkID=2;
 				item0=6;
 				item1=5;
+				class CustomData
+				{
+					type="Sync";
+				};
+			};
+			class Item3
+			{
+				linkID=3;
+				item0=10;
+				item1=9;
+				class CustomData
+				{
+					type="Sync";
+				};
+			};
+			class Item4
+			{
+				linkID=4;
+				item0=10;
+				item1=8;
 				class CustomData
 				{
 					type="Sync";

@@ -1110,6 +1110,28 @@ private _agl14 = if (isNull _drone) then { -1 } else { round ((getPosATL _drone)
 ["14a drone comes down when its operator is killed", _flew14 && { isNull _drone || { !alive _drone } || { _agl14 < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
     format ["flew while the operator lived=%1, 15 s after: alive=%2 agl=%3 fuel=%4 why=%5 | tank damage=%6",
         _flew14, alive _drone, _agl14, fuel _drone, _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
+{ deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic; deleteVehicle _op;
+if (!isNull _drone) then { { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; };
+
+// 14b: the Zeus way - Zeus can't sync and shows no module settings, so a module dropped
+// onto a soldier makes him the operator of the drones around it. Nothing synced here.
+_drone = [[1000, 5600, 0]] call FPVT_fnc_spawnDrone;
+private _op2 = (createGroup [west, true]) createUnit ["B_soldier_UAV_F", [960, 5600, 0], [], 0, "CAN_COLLIDE"];
+_op2 disableAI "MOVE";
+_tank = [[1000, 6050, 0]] call FPVT_fnc_spawnTank;
+_logic = [[960, 5600, 0], FPVT_AT + [["TargetDetectionRange", 500]]] call FPVT_fnc_module;
+_logic attachTo [_op2, [0, 0, 0]];
+[_logic, [], true] call FPV_AI_Drones_fnc_initModule;
+["Stage 14 - Zeus: module dropped onto the operator, then he is killed", _drone, _tank] call FPVT_fnc_show;
+private _until14b = time + 60;
+waitUntil { sleep 0.1; !alive _drone || { (_drone distance2D _tank) < 250 } || { time > _until14b } };
+private _flew14b = alive _drone && { (_drone distance2D _tank) < 250 };
+_op2 setDamage 1;
+sleep 15;
+private _agl14b = if (isNull _drone) then { -1 } else { round ((getPosATL _drone) select 2) };
+["14b Zeus: module dropped on a soldier - drone comes down when he is killed", _flew14b && { isNull _drone || { !alive _drone } || { _agl14b < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
+    format ["picked up and flew=%1, 15 s after: alive=%2 agl=%3 why=%4 | tank damage=%5",
+        _flew14b, alive _drone, _agl14b, _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
 };
 
 if ([15] call FPVT_fnc_runStage) then {
@@ -1127,17 +1149,32 @@ _timedOut = [_drone, _emptyEnemy, { params ["_v"]; !alive _v || { (damage _v) > 
     format ["OPFOR car alive=%1 damage=%2 | civilian car alive=%3 damage=%4 | timedOut=%5",
         alive _emptyEnemy, damage _emptyEnemy toFixed 2, alive _emptyCiv, damage _emptyCiv toFixed 2, _timedOut]] call FPVT_fnc_check;
 
-// 15b: off (default) - the same empty enemy car is no target: the drone stays put.
+// 15b: off - the same empty enemy car is no target: the drone stays put.
 _drone = [[4000, 5000, 0]] call FPVT_fnc_spawnDrone;
 _drone setVariable ["FPV_AI_Drones_managed", true, true];
 private _emptyEnemy2 = createVehicle ["O_MRAP_02_F", [4000, 5150, 0], [], 0, "NONE"];
-_logic = [[4008, 5000, 0], FPVT_AT] call FPVT_fnc_module;
+_logic = [[4008, 5000, 0], FPVT_AT + [["AttackEmptyVehicles", false]]] call FPVT_fnc_module;
 [_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
 ["Stage 15 - option off: the empty OPFOR car must be ignored", _drone, _emptyEnemy2] call FPVT_fnc_show;
 sleep 25;
 ["15b empty enemy car ignored with the option off", alive _drone && { (_drone distance2D [4000, 5000, 0]) < 30 } && { (damage _emptyEnemy2) < 0.1 },
     format ["drone alive=%1 moved=%2m | car damage=%3", alive _drone, round (_drone distance2D [4000, 5000, 0]), damage _emptyEnemy2 toFixed 2]] call FPVT_fnc_check;
 { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; deleteVehicle _emptyEnemy2;
+
+// 15c: on (the default) - a tank whose crew was killed is not "empty": its crew are still
+// inside, dead. Every later drone would otherwise go for the knocked-out hull.
+_drone = [[5000, 5000, 0]] call FPVT_fnc_spawnDrone;
+_drone setVariable ["FPV_AI_Drones_managed", true, true];
+_tank = [[5000, 5150, 0]] call FPVT_fnc_spawnTank;
+{ _x setDamage 1; } forEach crew _tank;
+_logic = [[5008, 5000, 0], FPVT_AT] call FPVT_fnc_module;
+[_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
+["Stage 15 - option on: a tank whose crew is dead must be left alone", _drone, _tank] call FPVT_fnc_show;
+sleep 25;
+["15c knocked-out tank (dead crew inside) not attacked", alive _drone && { (_drone distance2D [5000, 5000, 0]) < 30 } && { (damage _tank) < 0.1 },
+    format ["drone alive=%1 moved=%2m | tank damage=%3, crew inside=%4 (alive %5)", alive _drone, round (_drone distance2D [5000, 5000, 0]),
+        damage _tank toFixed 2, count crew _tank, { alive _x } count crew _tank]] call FPVT_fnc_check;
+{ deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; { deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic;
 };
 
 if ([16] call FPVT_fnc_runStage) then {

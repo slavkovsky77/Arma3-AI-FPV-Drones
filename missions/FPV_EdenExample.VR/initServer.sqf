@@ -4,6 +4,8 @@
     Everything that matters is placed in the editor (mission.sqm):
       - "FPV AI Drones - Anti-Tank" module, synced to two EMPTY Crocus AT drones
       - "FPV AI Drones - Anti-Personnel" module, synced to an empty Crocus AP
+      - to the south, an Anti-Tank module with "UAV Operator Required" ticked, synced to
+        an empty AR-2 Darter and to a UAV operator soldier
     That is the whole setup - no scripting needed. This file only sends enemies
     at the drones and gives the player a Zeus camera to watch with.
 */
@@ -43,7 +45,7 @@ FPVX_fnc_passive = {
         private _grp = group effectiveCommander _tank;
         [_grp] call FPVX_fnc_passive;
         _grp addWaypoint [[1260, _x select 1, 0], 0];
-    } forEach [[1700, 980, 0], [1760, 1040, 0]];
+    } forEach [[1700, 980, 0], [1760, 1040, 0], [1700, 600, 0]];
 
     // Infantry toward the Anti-Personnel drone.
     private _inf = createGroup [east, true];
@@ -54,4 +56,17 @@ FPVX_fnc_passive = {
     _inf addWaypoint [[1260, 1100, 0], 0];
 
     "Enemy armour and infantry are moving in from the east." remoteExec ["systemChat", 0];
+};
+
+// UAV Operator Required: once the AR-2 to the south starts its attack run, its operator
+// is taken out (scripted here, for the demo) - and the drone comes down.
+[] spawn {
+    private _op = missionNamespace getVariable ["fpvx_operator", objNull];
+    private _drone = missionNamespace getVariable ["fpvx_opDrone", objNull];
+    if (isNull _op || { isNull _drone }) exitWith {};
+    waitUntil { sleep 0.5; !alive _drone || { ((getPosATL _drone) select 2) > 15 && { (speed _drone) > 60 } } };
+    sleep 2;
+    if (!alive _op || { !alive _drone }) exitWith {};
+    _op setDamage 1;
+    "The AR-2's UAV operator has been killed - the drone loses its pilot and comes down." remoteExec ["systemChat", 0];
 };

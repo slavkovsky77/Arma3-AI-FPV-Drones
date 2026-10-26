@@ -2,7 +2,7 @@ author = "slavkovsky77";
 briefingName = "FPV AI Drones - Editor example";
 onLoadName = "FPV AI Drones - Editor example";
 onLoadMission = "Drones and modules placed in the editor. Enemy armour and infantry are on their way - watch them get hit.";
-overviewText = "Shows the editor setup: an Anti-Tank module synced to two empty Crocus AT drones, and an Anti-Personnel module synced to a Crocus AP. Enemies advance on them and the drones attack on their own. Press Y for a Zeus camera.";
+overviewText = "Shows the editor setup: an Anti-Tank module synced to two empty Crocus AT drones, an Anti-Personnel module synced to a Crocus AP, and an AR-2 whose module needs a UAV operator - he is taken out mid-attack. Enemies advance on them and the drones attack on their own. Press Y for a Zeus camera.";
 
 respawn = "BASE";
 respawnDelay = 3;

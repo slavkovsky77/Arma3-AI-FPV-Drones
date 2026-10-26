@@ -85,7 +85,8 @@ The mod's addon needs to be available to the curator: either set the Zeus module
 Two VR scenarios ship with the mod - in game under **Play > Showcases**:
 
 - **FPV AI Drones - Editor example**: modules synced to empty drones in the editor; enemy armour and
-  infantry advance and get hit. Press Y for a Zeus camera.
+  infantry advance and get hit. To the south, an AR-2 whose module has UAV Operator Required: its
+  operator is taken out mid-attack and the drone comes down. Press Y for a Zeus camera.
 - **FPV AI Drones - Zeus example**: a Zeus sandbox with live Crocus drones at marked drone stations
   and targets near and far. Also in the multiplayer mission list.
 
@@ -111,8 +112,8 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Accuracy | 100 | 100 | % of attack runs aimed at the target. The rest come down beside it, a few blast radii of the payload away (vehicles: 2.5x the payload's blast radius + 0-4 m, at least 6 m; infantry: where the blast is down to about 1 point of damage, ~17 m for the demo charge) |
 | Second Pass Chance | 50 | 50 | % of missed runs that fly low past the target and come round for another run (a new Accuracy roll) instead of going down beside it |
 | Delete Drone After Detonation | on | on | No wreck left when the payload goes off |
-| Attack Empty Vehicles | off | off | Also attack vehicles with no crew if their faction is one the drone attacks (by config side; civilian never). Crewed targets come first |
-| UAV Operator Required | off | off | Soldiers synced to the module are the operators; when the last one is killed the drones lose their pilot (fuel 0, engine off) and come down. Eden only |
+| Attack Empty Vehicles | on | on | Also attack vehicles with nobody inside (parked, abandoned) if their faction is one the drone attacks (by config side; civilian never). Crewed targets come first; a vehicle whose crew was killed is not attacked again |
+| UAV Operator Required | off | off | Soldiers synced to the module are the operators; when the last one is killed the drones lose their pilot (fuel 0, engine off) and come down. In Zeus (no syncing, no settings): drop the module onto a soldier - he is the operator of the drones within 100 m |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 
@@ -278,7 +279,8 @@ module started through the Zeus code path from the player's machine (8), Indepen
 Target Sides (10), tank driving past (11), Accuracy 0 % - AT and AP drones must miss (12), drones
 taken out mid-flight - crew killed as a jammer does, fuel cut - must come down, one with its AI
 switched off beforehand (as the Crocus mod does) must still fly (13),
-UAV Operator Required (14), Attack Empty Vehicles on and off (15), Second Pass - fly-bys (16),
+UAV Operator Required, synced and Zeus-style (14), Attack Empty Vehicles on and off, a knocked-out
+tank left alone (15), Second Pass - fly-bys (16),
 Delete Drone After Detonation on and off (17). An
 attempt that makes no progress for 30 s is stopped early instead of running into its timeout.
 

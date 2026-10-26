@@ -29,7 +29,7 @@ params [
     ["_hitChance", -1],           // % of attack runs aimed at the target itself, the rest miss; -1 = 100
     ["_secondPass", -1],          // % of missed runs that fly past and come round for another; -1 = 50
     ["_deleteDrone", true],       // remove the drone when its payload goes off
-    ["_attackEmpty", false]       // also attack vehicles with no crew, by their faction's side
+    ["_attackEmpty", true]        // also attack vehicles with nobody inside, by their faction's side
 ];
 // Since v1.2 _attackDistance, _attackDistance2D, _attackHeight and the delay/stuck
 // parameters are unused (the attack run is flown below); they stay for compatibility.
@@ -105,8 +105,10 @@ private _isHostile = {
     private _s = side _other;
     // An empty vehicle has no side of its own (it reads as civilian). With "Attack Empty
     // Vehicles" it counts as its faction's side from config, so an abandoned enemy car is
-    // a target and a civilian one never is. Wrecks are never targets.
-    if (_attackEmpty && { alive _other } && { !(_other isKindOf "CAManBase") } && { ({ alive _x } count crew _other) == 0 }) then {
+    // a target and a civilian one never is. Wrecks are never targets. Empty means nobody
+    // inside at all: crew lists the dead too, so a tank whose crew a drone already killed
+    // stays out - with the option on by default, every later drone would go for the hull.
+    if (_attackEmpty && { alive _other } && { !(_other isKindOf "CAManBase") } && { (crew _other) isEqualTo [] }) then {
         _s = [east, west, resistance, civilian] param [getNumber (configOf _other >> "side"), civilian];
     };
     switch (_mode) do {
@@ -146,7 +148,7 @@ private _findNearestEnemyOfType = {
         private _claims = { alive _x && { _x != _uav } } count (_x getVariable ["FPV_AI_Drones_claims", []]);
         private _score = _distance + (150 * _claims);
         // Crewed targets first: an empty one counts as 150 m further away.
-        if (_attackEmpty && { !(_x isKindOf "CAManBase") } && { ({ alive _x } count crew _x) == 0 }) then { _score = _score + 150; };
+        if (_attackEmpty && { !(_x isKindOf "CAManBase") } && { (crew _x) isEqualTo [] }) then { _score = _score + 150; };
         if (_isValidEnemy && { _distance < _detectionRange } && { _score < _bestScore }) then {
             _bestScore = _score;
             _nearestEnemy = _x;
