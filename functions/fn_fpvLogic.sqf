@@ -504,6 +504,9 @@ private _planMiss = {
     // soldier must not come down in the middle of the rest of the squad.
     private _others = ((ASLToAGL _tp) nearEntities [["Man", "LandVehicle", "Air", "Ship"], _off * 2 + 10]) select { alive _x && { _x != _uav } };
     private _bestClear = -1;
+    // Decided first: a fly-by can't use the spot straight short of the target - flying on
+    // past it, the climb-out went over the tank and the payload went off on it.
+    private _flyby = (random 100) < (_s get "secondPass");
     {
         private _a = _x + (random 20) - 10;   // degrees from straight ahead
         private _cand = [((_fwd select 0) * cos _a) - ((_fwd select 1) * sin _a), ((_fwd select 0) * sin _a) + ((_fwd select 1) * cos _a), 0] vectorMultiply _off;
@@ -511,9 +514,9 @@ private _planMiss = {
         private _clear = _off * 2;
         { _clear = _clear min (_spot distance2D (getPosASL _x)); } forEach _others;
         if (_clear > _bestClear) then { _bestClear = _clear; _miss = _cand; };
-    } forEach ([90, -90, 135, -135, 180] call BIS_fnc_arrayShuffle);
+    } forEach (([90, -90, 135, -135, 180] select { !_flyby || { _x != 180 } }) call BIS_fnc_arrayShuffle);
     _s set ["miss", _miss];
-    _s set ["flyby", (random 100) < (_s get "secondPass")];
+    _s set ["flyby", _flyby];
     diag_log format ["FPV_AI_Drones: drone %1 will miss (accuracy %2 percent): %3 %4m from %5, %6m from anyone",
         _uav, _s get "hitChance", ["coming down", "flying past"] select (_s get "flyby"), round vectorMagnitude _miss, _target, round _bestClear];
 };
@@ -873,6 +876,14 @@ private _guide = {
         private _vh = [_v select 0, _v select 1, 0];
         private _away = if ((vectorMagnitude _vh) > 1) then { _vh } else { _p vectorDiff (getPosASL _target) };
         private _dirH = vectorNormalized [_away select 0, _away select 1, 0];
+        // The target straight ahead (it drove into the way): turn off to the side, not over it.
+        private _toT = (getPosASL _target) vectorDiff _p;
+        _toT set [2, 0];
+        if ((vectorMagnitude _toT) < 40 && { (_dirH vectorDotProduct (vectorNormalized _toT)) > 0.7 }) then {
+            private _side = vectorNormalized [-(_toT select 1), _toT select 0, 0];
+            if ((_side vectorDotProduct _dirH) < 0) then { _side = _side vectorMultiply -1; };
+            _dirH = _side;
+        };
         private _zWant = _ground + ((_s get "cruise") min 25);
         // Below 8 m it climbs whatever the height it wants: no skimming the ground.
         private _vz = (((_zWant - (_p select 2)) * 1.5) max ([-5, 4] select (((_p select 2) - _ground) < 8))) min 15;
