@@ -1,4 +1,4 @@
-"""Builds and signs the FPV AI Drones addon.
+r"""Builds and signs the FPV AI Drones addon.
 
     python build.py                    # build + sign with the current key
     python build.py --key-name v1_2    # start a new key version for a new release
@@ -8,11 +8,15 @@ Re-sign after EVERY rebuild: the signature is over the built PBO, so a stale
 .bisign fails verification exactly as hard as no signature at all.
 """
 import argparse
+import fnmatch
 import glob
+import hashlib
 import os
 import shutil
+import struct
 import subprocess
 import sys
+import time
 
 
 def tool(exe, args, cwd=None):
@@ -22,6 +26,42 @@ def tool(exe, args, cwd=None):
         print(f"  {line}")
     if r.returncode != 0:
         sys.exit(f"{os.path.basename(exe)} failed with exit code {r.returncode}")
+
+
+def pack_pbo(src, pbo, exclude_file):
+    """Packs src into an uncompressed PBO, the way AddonBuilder -packonly does.
+
+    Packed here because Windows Smart App Control blocks AddonBuilder's unsigned
+    SteamHelper.dll (Oct 2026). Layout: a "prefix" header from $PBOPREFIX$, one entry per
+    file (sorted, no compression), the file data, then a 0 byte and the SHA-1 of it all.
+    """
+    patterns = [l.strip() for l in open(exclude_file) if l.strip()]
+    files = []
+    for root, dirs, names in os.walk(src):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
+        for n in names:
+            rel = os.path.relpath(os.path.join(root, n), src)
+            if not any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(n, p) for p in patterns):
+                files.append((rel, os.path.join(src, rel)))
+    packed = int(time.time())
+    entries = [(rel, open(path, "rb").read(), int(os.path.getmtime(path))) for rel, path in files]
+    # AddonBuilder adds this too; nothing reads it but it marks when the PBO was made.
+    info = f'class BIS_AddonInfo\r\n{{\r\n\tauthor="";\r\n\ttimepacked="{packed}";\r\n}};\r\n'
+    entries.append(("BIS_AddonInfo.hpp", info.encode("ascii"), packed))
+    entries.sort(key=lambda e: e[0].lower())
+
+    prefix = open(os.path.join(src, "$PBOPREFIX$"), encoding="ascii").read().strip()
+    out = bytearray(b"\0" + struct.pack("<5I", 0x56657273, 0, 0, 0, 0))
+    out += b"prefix\0" + prefix.encode("ascii") + b"\0\0"
+    for name, data, mtime in entries:
+        out += name.encode("ascii") + b"\0" + struct.pack("<5I", 0, 0, 0, mtime, len(data))
+    out += b"\0" + struct.pack("<5I", 0, 0, 0, 0, 0)
+    for _, data, _ in entries:
+        out += data
+    out += b"\0" + hashlib.sha1(out).digest()
+    with open(pbo, "wb") as f:
+        f.write(out)
+    print(f"  packed {len(entries)} files, {len(out)} bytes")
 
 
 def main():
@@ -40,10 +80,9 @@ def main():
     private = os.path.join(os.path.dirname(mod), "fpv_ai_drones_private")   # OUTSIDE mod: Publisher uploads the whole mod folder
     pbo = os.path.join(addons, "fpv_ai_drones.pbo")
 
-    addon_builder = os.path.join(a.tools_dir, r"AddonBuilder\AddonBuilder.exe")
     create_key = os.path.join(a.tools_dir, r"DSSignFile\DSCreateKey.exe")
     sign_file = os.path.join(a.tools_dir, r"DSSignFile\DSSignFile.exe")
-    for exe in (addon_builder, create_key, sign_file):
+    for exe in (create_key, sign_file):
         if not os.path.exists(exe):
             sys.exit(f"Missing Arma 3 Tools component: {exe}")
     for d in (keys, private):
@@ -66,9 +105,7 @@ def main():
     print(f"Building {pbo} ...")
     for old in glob.glob(os.path.join(addons, "fpv_ai_drones.pbo.*.bisign")):
         os.remove(old)   # signatures belonging to the previous build
-    tool(addon_builder, [src, addons, "-clear", "-packonly", f"-exclude={os.path.join(src, 'build_exclude.txt')}"])
-    if not os.path.exists(pbo):
-        sys.exit(f"AddonBuilder did not produce {pbo}")
+    pack_pbo(src, pbo, os.path.join(src, "build_exclude.txt"))
 
     # --- mod root metadata -----------------------------------------------------
     # mod.cpp is kept in source control alongside the addon, but Arma only reads it

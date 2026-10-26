@@ -1134,6 +1134,7 @@ _drone setVariable ["FPV_AI_Drones_managed", true, true];
 _tank = [[5500, 5150, 0]] call FPVT_fnc_spawnTank;
 _logic = [[5508, 5000, 0], FPVT_AT + [["HitChance", 0], ["SecondPassChance", 100]]] call FPVT_fnc_module;
 [_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
+FPV_AI_Drones_debug = true;   // flight trace: the passes and the climbs out
 ["Stage 16 - Accuracy 0, Second Pass 100: passes the tank again and again", _drone, _tank] call FPVT_fnc_show;
 sleep 40;
 private _passes = _drone getVariable ["FPV_AI_Drones_passes", 0];
@@ -1141,6 +1142,7 @@ private _passes = _drone getVariable ["FPV_AI_Drones_passes", 0];
     format ["passes=%1 drone alive=%2 agl=%3 | tank damage=%4 crewAlive=%5",
         _passes, alive _drone, round ((getPosATL _drone) select 2), damage _tank toFixed 2, { alive _x } count crew _tank]] call FPVT_fnc_check;
 { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; deleteVehicle _logic;
+FPV_AI_Drones_debug = false;
 };
 
 if ([17] call FPVT_fnc_runStage) then {

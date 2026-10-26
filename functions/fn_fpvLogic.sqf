@@ -81,8 +81,9 @@ private _disabledReason = {
     private _crew = (crew _u) select { alive _x };
     if (_crew isEqualTo []) exitWith { "no living crew" };
     // Only if it could when this script took it on: a drone mod may report a healthy drone as unable.
-    if (!canMove _u && { _u getVariable ["FPV_AI_Drones_couldMove", true] }) exitWith { "engine or rotor destroyed" };
+    // Fuel first: an empty tank makes canMove false too.
     if ((fuel _u) <= 0) exitWith { "out of fuel" };
+    if (!canMove _u && { _u getVariable ["FPV_AI_Drones_couldMove", true] }) exitWith { "engine or rotor destroyed" };
     if ((_crew findIf { !(_x checkAIFeature "MOVE") }) >= 0) exitWith { "its AI was switched off (jammed?)" };
     ""
 };
@@ -653,20 +654,31 @@ private _guide = {
     _s set ["lastPos", _p];
 
     // A fly-by: once past its spot (within 6 m, or getting further again after coming
-    // within 15 m) the pass is over - roll for the next run. The steering below turns
-    // the drone back: low with the target behind it counts as missed, so it climbs first.
-    if (_flyingPast) then {
+    // within 15 m) the pass is over. The drone flies on and climbs out ("outbound",
+    // steered below), and only out there is the next run rolled and planned. Planned at
+    // the pass itself, a spot "short of the target" lay right under the drone: it counted
+    // a second pass at once and went into the ground turning round 5 m up.
+    if (_flyingPast && { !("outbound" in _s) }) then {
         private _dFly = _p vectorDistance _tPos;
         private _bestFly = (_s getOrDefault ["flyBest", 1e9]) min _dFly;
         _s set ["flyBest", _bestFly];
         if (_dFly < 6 || { _bestFly < 15 && { _dFly > _bestFly + 2 } }) then {
             private _passes = (_uav getVariable ["FPV_AI_Drones_passes", 0]) + 1;
             _uav setVariable ["FPV_AI_Drones_passes", _passes, true];
-            _s set ["passes", (_s getOrDefault ["passes", 0]) + 1];
             _s deleteAt "flyBest";
+            _s set ["outbound", diag_tickTime];
+            diag_log format ["FPV_AI_Drones: drone %1 flew past %2 (pass %3) - climbing out for another run", _uav, _target, _passes];
+        };
+    };
+    // Out far enough to turn back with room for a glide and a dive: the next run.
+    if ("outbound" in _s) then {
+        private _fromT = _p vectorDiff (getPosASL _target);
+        if ((vectorMagnitude [_fromT select 0, _fromT select 1, 0]) > 60 || { diag_tickTime > (_s get "outbound") + 4 }) then {
+            _s deleteAt "outbound";
+            _s set ["runs", (_s getOrDefault ["runs", 0]) + 1];
             [_s] call (_s get "planMiss");
-            diag_log format ["FPV_AI_Drones: drone %1 flew past %2 (pass %3) - next run %4",
-                _uav, _target, _passes, ["aimed at it", "another miss"] select ((_s get "miss") isNotEqualTo [])];
+            diag_log format ["FPV_AI_Drones: drone %1 turning back for run %2 on %3: %4",
+                _uav, (_s get "runs") + 1, _target, ["aimed at it", "another miss"] select ((_s get "miss") isNotEqualTo [])];
         };
     };
 
@@ -781,9 +793,20 @@ private _guide = {
         private _sinA = if (_cosA < 0) then { 1 } else { sqrt ((1 - (_cosA ^ 2)) max 0) };
         private _vTurn = if (_sinA > 0.01) then { sqrt (0.8 * (_s get "accel") * _dAim / (2 * _sinA)) } else { _speed };
         _vDes = (_toAim vectorMultiply (1 / _dAim)) vectorMultiply ((_speed min _vTurn) max (((vectorMagnitude _tVel) + 10) max 12));
-        // A fly-by levels out at its spot's height instead of diving on through it:
-        // aimed at like a dive, the drone reached it still sinking and hit the ground.
-        if (_flyingPast) then { _vDes set [2, (_vDes select 2) max (((_tPos select 2) - (_p select 2)) * 2)]; };
+        // A fly-by levels out at its spot's height instead of diving on through it, and
+        // keeps its speed: no braking for a dive. Aimed at like a dive, the drone spent
+        // its acceleration braking forward, passed the spot still sinking at 17-20 m/s and
+        // bottomed out 1-4 m over the ground. It sinks only as fast as the line to the
+        // spot needs, and no faster than it can stop by then on 60% of its acceleration.
+        if (_flyingPast) then {
+            private _vHNow = vectorMagnitude [_v select 0, _v select 1, 0];
+            private _vhF = (_vHNow max ((vectorMagnitude _tVel) + 10)) min _speed;
+            private _above = (_p select 2) - (_tPos select 2);
+            private _vzF = if (_above > 0) then {
+                (-_above * _vhF / (_d2 max 1)) max (-sqrt (1.2 * (_s get "accel") * _above))
+            } else { (-_above * 2) min 15 };
+            _vDes = ((vectorNormalized _toAimH) vectorMultiply _vhF) vectorAdd [0, 0, _vzF];
+        };
         _s set ["wantAgl", [2, 5] select _flyingPast];
     } else {
         // Glide path: down at ~1:3 to the dive's entry point (30 m out, _termH up),
@@ -812,6 +835,9 @@ private _guide = {
         private _zDes = ((_aim select 2) + _hRel) max (_ground + 5);
         _s set ["wantAgl", (_zDes - _ground) max 2];
         private _vz = ((((_zDes - (_p select 2)) * 1.5) + ([0, -_slope * _vhPlan] select _onSlope)) max -((_slope * _vhPlan) + 8)) min 15;
+        // A fly-by brakes its sink for the spot already on the glide (see the terminal
+        // branch): handed over at 24 m/s down, it still passed sinking 17 and got to 3.5 m.
+        if (_flyingPast) then { _vz = _vz max (-sqrt (1.2 * (_s get "accel") * (((_p select 2) - (_tPos select 2)) max 0))); };
         private _vh = _vhPlan min (sqrt (((_speed ^ 2) - (_vz ^ 2)) max 0));
         // Still lifting off: straight up until clear of the ground (dragging along it
         // counts as a hit - see the attitude note below), then ease into going flat out.
@@ -830,6 +856,23 @@ private _guide = {
         // After a miss, stop sinking before anything else: all of the drone's
         // acceleration goes into climbing until it is, then it turns back for the pass.
         if (_missed && { (_v select 2) < 0 }) then { _vDes = [_v select 0, _v select 1, 4]; };
+    };
+
+    // Outbound after a fly-by: hold the heading and climb to 25 m (or the search height,
+    // if lower), at no more than 70% of top speed so the turn back is short.
+    if ("outbound" in _s) then {
+        private _vh = [_v select 0, _v select 1, 0];
+        private _away = if ((vectorMagnitude _vh) > 1) then { _vh } else { _p vectorDiff (getPosASL _target) };
+        private _dirH = vectorNormalized [_away select 0, _away select 1, 0];
+        private _zWant = _ground + ((_s get "cruise") min 25);
+        // Below 8 m it climbs whatever the height it wants: no skimming the ground.
+        private _vz = (((_zWant - (_p select 2)) * 1.5) max ([-5, 4] select (((_p select 2) - _ground) < 8))) min 15;
+        _sep = [_uav, _p] call (_s get "separate");
+        _vDes = ((_dirH vectorMultiply (((vectorMagnitude _vh) max 15) min (_speed * 0.7))) vectorAdd [0, 0, _vz]) vectorAdd _sep;
+        if ((lineIntersectsSurfaces [_p, _p vectorAdd ((vectorNormalized _vDes) vectorMultiply (((vectorMagnitude _v) * 1.5) max 15)), _uav, objNull, true, 1, "GEOM", "NONE"]) isNotEqualTo []) then {
+            _vDes = [(_vDes select 0) * 0.5, (_vDes select 1) * 0.5, (_vDes select 2) max 10];
+        };
+        _s set ["wantAgl", _zWant - _ground];
     };
 
     // Ease towards it rather than snapping: at most "accel" m/s per second of change -
@@ -889,15 +932,17 @@ private _bestAt = diag_tickTime;
 private _lastLook = diag_tickTime;
 private _lastOrder = -1e9;
 private _pilotAgl = _initialSearchHeight;
-private _passesSeen = 0;
+private _runsSeen = 0;
 while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
     sleep 0.25;
     // Drone just died: the handler decides whether that was the hit. Don't race it.
     if ([_uavInstance] call _is_dead) then { continue; };
     private _d = _uavInstance distance _target;
     if (_d < _best - 3) then { _best = _d; _bestAt = diag_tickTime; };
-    // A fly-by starts a new run: it gets the full 12 s again.
-    if ((_state getOrDefault ["passes", 0]) != _passesSeen) then { _passesSeen = _state getOrDefault ["passes", 0]; _best = _d; _bestAt = diag_tickTime; };
+    // Climbing out after a fly-by is no lack of progress; the run after it gets the full
+    // 12 s, counted from where it turns back.
+    if ("outbound" in _state) then { _bestAt = diag_tickTime; };
+    if ((_state getOrDefault ["runs", 0]) != _runsSeen) then { _runsSeen = _state getOrDefault ["runs", 0]; _best = _d; _bestAt = diag_tickTime; };
     private _reason = switch (true) do {
         case (([_uavInstance] call _disabledReason) != ""): { "drone disabled: " + ([_uavInstance] call _disabledReason) };
         case ([_uavInstance] call _isExternallyControlled): { "taken over by a player (UAV terminal or Zeus)" };
