@@ -63,6 +63,10 @@ failing silently.
    other drone of the same type anywhere on the map, including ones spawned later.
 4. Optional: give a drone **waypoints**. While it has no target it flies them in order, and
    attacks anything it spots on the way.
+5. Optional: drop the **UAV Operator** module (same folder) onto a soldier. It moves with him:
+   every drone of his side that comes within **100 m** of him becomes his - also drones you put
+   down next to him later, wherever he has walked to - and when he is killed they come down.
+   Deleting the module ends his role.
 
 A drone is controlled by the first module that picks it up; placing a second module next to it
 doesn't change it. Use the module type you want (AT / AP) first.
@@ -113,7 +117,7 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Second Pass Chance | 50 | 50 | % of missed runs that fly low past the target and come round for another run (a new Accuracy roll) instead of going down beside it |
 | Delete Drone After Detonation | on | on | No wreck left when the payload goes off |
 | Attack Empty Vehicles | on | on | Also attack vehicles with nobody inside (parked, abandoned) if their faction is one the drone attacks (by config side; civilian never). Crewed targets come first; a vehicle whose crew was killed is not attacked again |
-| UAV Operator Required | off | off | Soldiers synced to the module are the operators; when the last one is killed the drones lose their pilot (fuel 0, engine off) and come down. In Zeus (no syncing, no settings): drop the module onto a soldier - he is the operator of the drones within 100 m |
+| UAV Operator Required | off | off | Soldiers synced to the module are the operators; when the last one is killed the drones lose their pilot (fuel 0, engine off) and come down. In Zeus (no syncing, no settings) use the **UAV Operator** module instead: drop it onto a soldier |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 
@@ -279,7 +283,7 @@ module started through the Zeus code path from the player's machine (8), Indepen
 Target Sides (10), tank driving past (11), Accuracy 0 % - AT and AP drones must miss (12), drones
 taken out mid-flight - crew killed as a jammer does, fuel cut - must come down, one with its AI
 switched off beforehand (as the Crocus mod does) must still fly (13),
-UAV Operator Required, synced and Zeus-style (14), Attack Empty Vehicles on and off, a knocked-out
+UAV Operator Required synced, and the UAV Operator module moving with its soldier (14), Attack Empty Vehicles on and off, a knocked-out
 tank left alone (15), Second Pass - fly-bys (16),
 Delete Drone After Detonation on and off (17). An
 attempt that makes no progress for 30 s is stopped early instead of running into its timeout.

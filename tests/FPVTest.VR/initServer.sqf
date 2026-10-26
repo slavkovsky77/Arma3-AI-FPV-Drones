@@ -1113,25 +1113,35 @@ private _agl14 = if (isNull _drone) then { -1 } else { round ((getPosATL _drone)
 { deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic; deleteVehicle _op;
 if (!isNull _drone) then { { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; };
 
-// 14b: the Zeus way - Zeus can't sync and shows no module settings, so a module dropped
-// onto a soldier makes him the operator of the drones around it. Nothing synced here.
-_drone = [[1000, 5600, 0]] call FPVT_fnc_spawnDrone;
-private _op2 = (createGroup [west, true]) createUnit ["B_soldier_UAV_F", [960, 5600, 0], [], 0, "CAN_COLLIDE"];
+// 14b: the Zeus way - the "UAV Operator" module dropped onto a soldier (Zeus attaches it to
+// him; Zeus can't sync). It must go where he goes: he walks 300 m, a drone is put down next
+// to him there (with a drone station), and it must become his. Killed mid-attack: it comes down.
+private _op2 = (createGroup [west, true]) createUnit ["B_soldier_UAV_F", [700, 5600, 0], [], 0, "CAN_COLLIDE"];
 _op2 disableAI "MOVE";
-_tank = [[1000, 6050, 0]] call FPVT_fnc_spawnTank;
-_logic = [[960, 5600, 0], FPVT_AT + [["TargetDetectionRange", 500]]] call FPVT_fnc_module;
-_logic attachTo [_op2, [0, 0, 0]];
+private _opModule = (createGroup sideLogic) createUnit ["Logic", [700, 5600, 0], [], 0, "CAN_COLLIDE"];
+_opModule attachTo [_op2, [0, 0, 0]];
+[_opModule, [], true] call FPV_AI_Drones_fnc_operatorModule;
+sleep 3;
+_op2 setPosATL [1000, 5600, 0];   // he moves on, the module with him
+_drone = [[1040, 5600, 0]] call FPVT_fnc_spawnDrone;
+_tank = [[1040, 6050, 0]] call FPVT_fnc_spawnTank;
+_logic = [[1040, 5600, 0], FPVT_AT + [["TargetDetectionRange", 500]]] call FPVT_fnc_module;
 [_logic, [], true] call FPV_AI_Drones_fnc_initModule;
-["Stage 14 - Zeus: module dropped onto the operator, then he is killed", _drone, _tank] call FPVT_fnc_show;
+["Stage 14 - Zeus: UAV Operator module on a soldier, he moves, then he is killed", _drone, _tank] call FPVT_fnc_show;
 private _until14b = time + 60;
 waitUntil { sleep 0.1; !alive _drone || { (_drone distance2D _tank) < 250 } || { time > _until14b } };
 private _flew14b = alive _drone && { (_drone distance2D _tank) < 250 };
+private _his14b = _op2 in (_drone getVariable ["FPV_AI_Drones_operators", []]);
+private _moved14b = (attachedTo _opModule) isEqualTo _op2 && { (_opModule distance2D _op2) < 2 };
 _op2 setDamage 1;
 sleep 15;
 private _agl14b = if (isNull _drone) then { -1 } else { round ((getPosATL _drone) select 2) };
-["14b Zeus: module dropped on a soldier - drone comes down when he is killed", _flew14b && { isNull _drone || { !alive _drone } || { _agl14b < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
-    format ["picked up and flew=%1, 15 s after: alive=%2 agl=%3 why=%4 | tank damage=%5",
-        _flew14b, alive _drone, _agl14b, _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
+["14b Zeus: UAV Operator module moves with him; his drone comes down when he is killed",
+    _moved14b && { _his14b } && { _flew14b } && { isNull _drone || { !alive _drone } || { _agl14b < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
+    format ["module still on him after 300 m=%1 | drone placed by him became his=%2, flew=%3, 15 s after he died: alive=%4 agl=%5 why=%6 | tank damage=%7",
+        _moved14b, _his14b, _flew14b, alive _drone, _agl14b, _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
+{ deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic; deleteVehicle _opModule;
+if (!isNull _drone) then { { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; };
 };
 
 if ([15] call FPVT_fnc_runStage) then {

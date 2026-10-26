@@ -9,6 +9,10 @@
 
 params ["_curator", "_entity"];
 
+// The UAV Operator module: it waits for Zeus to attach it to the soldier itself.
+if (_entity isKindOf "FPV_AI_Drones_Operator_Module") exitWith {
+    [_entity, [], true] remoteExec ["FPV_AI_Drones_fnc_operatorModule", 2];
+};
 if !(_entity isKindOf "FPV_AI_Drones_Module") exitWith {};   // the AT/AP modules inherit from this
 
 [_entity] spawn {

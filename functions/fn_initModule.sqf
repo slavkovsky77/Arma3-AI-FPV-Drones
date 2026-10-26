@@ -135,21 +135,11 @@ private _drones = _units select { [_x] call _isDroneCandidate };
 
 // "UAV Operator Required" (a Workshop wish): soldiers synced to the module are its
 // drones' operators. When the last of them is dead, the drones lose their pilot - see
-// the loop below. Not a drone's own UAV crew, which is in a drone.
-private _isOperatorCandidate = { params ["_u"]; !isNull _u && { _u isKindOf "CAManBase" } && { alive _u } && { !(unitIsUAV (vehicle _u)) } };
+// the loop below. Not a drone's own UAV crew, which is in a drone. (In Zeus, which can't
+// sync, the "UAV Operator" module does the same - fn_operatorModule.)
 private _operators = if (_operatorRequired) then {
-    _units select { [_x] call _isOperatorCandidate }
+    _units select { _x isKindOf "CAManBase" && { alive _x } && { !(unitIsUAV (vehicle _x)) } }
 } else { [] };
-// Zeus can't sync, and shows no settings for a module: there, dropping the module onto
-// a soldier makes him the operator, of the drones around him (a drone station, see 3.).
-private _attachedTo = attachedTo _logic;
-if ([_attachedTo] call _isOperatorCandidate) then {
-    _operatorRequired = true;
-    _operators pushBackUnique _attachedTo;
-    private _note = format ["FPV AI Drones: %1 is the operator of this module's drones - if he is killed, they come down.", name _attachedTo];
-    diag_log text _note;
-    _note remoteExec ["systemChat", 0];
-};
 if (_operatorRequired && { _operators isEqualTo [] }) then {
     private _note = "FPV AI Drones: 'UAV Operator Required' is on, but no soldier is synced to the module - its drones fly without one.";
     diag_log text _note;
@@ -352,9 +342,15 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
             // Current group, for a replacement's route (see _tag): Zeus creates the crew
             // a moment after the drone, and can regroup it.
             if (!isNull group _x) then { _x setVariable ["FPV_AI_Drones_group", group _x]; };
-            // "UAV Operator Required": the last operator is dead - the drone loses its
-            // pilot. Engine off and no fuel; fpvLogic leaves a drone like that alone.
-            if (_operators isNotEqualTo [] && { ({ alive _x } count _operators) == 0 } && { !(_x getVariable ["FPV_AI_Drones_disabled", false]) }) then {
+            // Its operators: this module's synced ones ("UAV Operator Required"), plus any
+            // it came near of a "UAV Operator" module (fn_operatorModule). All of them dead:
+            // the drone loses its pilot. Engine off and no fuel; fpvLogic leaves it alone.
+            private _ops = _x getVariable ["FPV_AI_Drones_operators", []];
+            if ((_operators - _ops) isNotEqualTo []) then {
+                _ops = _ops + (_operators - _ops);
+                _x setVariable ["FPV_AI_Drones_operators", _ops];
+            };
+            if (_ops isNotEqualTo [] && { ({ alive _x } count _ops) == 0 } && { !(_x getVariable ["FPV_AI_Drones_disabled", false]) }) then {
                 _x setFuel 0;
                 _x engineOn false;
                 _x setVariable ["FPV_AI_Drones_disabled", true, true];

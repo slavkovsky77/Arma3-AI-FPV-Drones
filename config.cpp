@@ -3,7 +3,8 @@ class CfgPatches {
         units[] = {
             "FPV_AI_Drones_Module",
             "FPV_AI_Drones_AT_Module",
-            "FPV_AI_Drones_AP_Module"
+            "FPV_AI_Drones_AP_Module",
+            "FPV_AI_Drones_Operator_Module"
         };
         weapons[] = {};
         magazines[] = {};
@@ -20,6 +21,7 @@ class CfgFunctions {
             class fpvLogic {};
             class curatorHook { postInit = 1; };   // starts FPV modules placed in Zeus
             class curatorPlaced {};
+            class operatorModule {};
         };
     };
 };
@@ -451,6 +453,31 @@ class CfgVehicles {
 
         class ModuleDescription: ModuleDescription {
             description = "FPV AI Drones Module - Anti-Personnel Variant";
+            sync[] = {"All"};
+        };
+    };
+
+    // "UAV Operator": dropped onto a soldier in Zeus (or synced to one in the editor) he
+    // becomes a drone operator. The module goes where he goes; the drones of his side that
+    // come within 100 m of him become his, and come down when he is killed. No settings:
+    // Zeus shows none. See fn_operatorModule.
+    class FPV_AI_Drones_Operator_Module: Module_F {
+        scope = 2;
+        scopeCurator = 2;
+        curatorCanAttach = 1;
+        displayName = "FPV AI Drones - UAV Operator";
+        icon = "\A3\Modules_F_Curator\Data\iconSmoke_ca.paa";
+        category = "Effects";
+
+        function = "FPV_AI_Drones_fnc_operatorModule";
+        functionPriority = 2;   // after the drone modules
+        isGlobal = 1;
+        isTriggerActivated = 0;
+        isDisposable = 0;
+        is3DEN = 0;
+
+        class ModuleDescription: ModuleDescription {
+            description = "Makes a soldier a drone operator. Zeus: drop it onto the soldier. Editor: sync it to him. It moves with him; drones of his side flown by an FPV AI Drones module that come within 100 m of him become his, and come down when he is killed.";
             sync[] = {"All"};
         };
     };
