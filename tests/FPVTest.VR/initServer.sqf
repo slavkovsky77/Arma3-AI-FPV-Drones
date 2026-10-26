@@ -1178,6 +1178,55 @@ if ([17] call FPVT_fnc_runStage) then {
 } forEach [[6500, true], [7300, false]];
 };
 
+if ([18] call FPVT_fnc_runStage) then {
+// --- Stage 18: a real drone jammer --------------------------------------------
+// Sania & Volnorez EW (Workshop 3147611501, loaded with --extra-mods): within 600 m of an
+// active jammer it kills an AI-flown drone's driver and gunner. A Workshop report on
+// 1.3.0: "the AR-2 swoops in targeting the player although jammed, the AL-6's AI crew are
+// killed by the jammer but the drone is still in the air with engines running". Each
+// drone starts 900 m from its target with a jammer beside it: it must come down on the
+// way in, and the target must live.
+if !(isClass (configFile >> "CfgVehicles" >> "Sania_with_tripod")) then {
+    ["18 real jammer", "INFO", "skipped - load Sania & Volnorez EW (Workshop 3147611501) with --extra-mods"] call FPVT_fnc_report;
+} else {
+    {
+        _x params ["_label", "_type", "_preset", "_x0"];
+        private _infantry = ((_preset select 0) select 1) == "Man";
+        private _target = if (_infantry) then { ([[_x0, 8000, 0], 1] call FPVT_fnc_spawnSquad) select 0 } else { [[_x0, 8000, 0]] call FPVT_fnc_spawnTank };
+        private _jammer = createVehicle ["Sania_with_tripod", [_x0 + 15, 8000, 0], [], 0, "CAN_COLLIDE"];
+        private _d = [[_x0, 7100, 0], _type] call FPVT_fnc_spawnDrone;
+        _d setVariable ["FPV_AI_Drones_managed", true, true];
+        private _l = [[_x0 + 8, 7100, 0], _preset + [["TargetDetectionRange", 1000]]] call FPVT_fnc_module;
+        [_l, [_d], true] call FPV_AI_Drones_fnc_initModule;
+        [format ["Stage 18 - real jammer: %1", _label], _d, _target] call FPVT_fnc_show;
+        private _closest = 1e9;
+        private _until = time + 45;
+        waitUntil {
+            sleep 0.25;
+            if (!isNull _d) then { _closest = _closest min (_d distance2D _target); };
+            time > _until || { isNull _d } || { !alive _d }
+                || { ({ alive _x } count crew _d) == 0 && { ((getPosATL _d) select 2) < 3 } }
+        };
+        sleep 3;
+        private _agl = if (isNull _d) then { -1 } else { round ((getPosATL _d) select 2) };
+        private _crewAlive = if (isNull _d) then { 0 } else { { alive _x } count crew _d };
+        private _down = isNull _d || { !alive _d } || { _agl < 3 };
+        private _targetOk = if (_infantry) then { alive _target } else { !([_target] call FPVT_fnc_vehicleDone) && { (damage _target) < 0.1 } };
+        [format ["18 %1", _label], _down && { _crewAlive == 0 } && { _targetOk } && { _closest < 1e9 },
+            format ["jammer active=%1 | drone down=%2 agl=%3 crewAlive=%4 why=%5, came within %6 m | target unharmed=%7",
+                _jammer getVariable ["DB_jammer_isActive", false], _down, _agl, _crewAlive,
+                if (isNull _d) then { "-" } else { _d getVariable ["FPV_AI_Drones_disabledWhy", "-"] }, round _closest, _targetOk]] call FPVT_fnc_check;
+        if (!isNull _d) then { { deleteVehicle _x } forEach crew _d; deleteVehicle _d; };
+        { deleteVehicle _x } forEach crew _target; deleteVehicle _target;
+        deleteVehicle _jammer; deleteVehicle _l;
+    } forEach [
+        ["an AR-2 Darter (Anti-Personnel) going for a soldier", "B_UAV_01_F", FPVT_AP, 1000],
+        ["an AL-6 Pelican (Anti-Tank) going for a tank", "B_UAV_06_F", FPVT_AT, 1800],
+        ["a Crocus (Anti-Tank) going for a tank", "B_Crocus_AT", FPVT_AT, 2600]
+    ];
+};
+};
+
 // --- Summary + hand over Zeus for manual poking -----------------------------
 private _passed = { (_x select 1) == "PASS" } count FPVT_results;
 diag_log text format ["FPV_TEST|SUMMARY|%1/%2", _passed, count FPVT_results];
