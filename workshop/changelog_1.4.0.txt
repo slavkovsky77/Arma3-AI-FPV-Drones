@@ -1,0 +1,10 @@
+v1.4.0 - Jammers, operators, empty vehicles and second passes
+
+FIXED
+- Drones taken out by a drone jammer (or by the mission) come down again: a drone whose crew is killed, whose fuel is cut, whose engine or rotor is destroyed or whose AI is switched off is no longer flown by the module. Since 1.3.0 such a drone kept flying with its engines running
+
+NEW MODULE SETTINGS
+- UAV Operator Required: synchronise soldiers to the module as the drones' operators. When the last of them is killed, the drones lose their pilot - engines off, and they come down (Eden editor)
+- Attack Empty Vehicles: also attack vehicles without a crew, if their faction is one the drone attacks. Civilian vehicles never; crewed targets still come first. Default off
+- Second Pass Chance (%): when a run misses (Accuracy below 100), the drone can fly low past the target and come round for another run instead of going down beside it. Every new run rolls Accuracy again. Default 50
+- Delete Drone After Detonation: no wreck is left when the payload goes off - few FPV drones have a proper destroyed model. Default on

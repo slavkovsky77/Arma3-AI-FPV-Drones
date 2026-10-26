@@ -139,6 +139,31 @@ class CfgVehicles {
                 typeName = "NUMBER";
                 defaultValue = "100";
             };
+            class SecondPassChance: Edit {
+                property = "FPV_AI_Drones_SecondPassChance";
+                displayName = "Second Pass Chance (%)";
+                tooltip = "When an attack run misses (Accuracy below 100): the chance that the drone flies low past the target and comes round for another run, instead of going down beside it. Every new run rolls Accuracy again. Default 50.";
+                typeName = "NUMBER";
+                defaultValue = "50";
+            };
+            class DeleteDrone: Checkbox {
+                property = "FPV_AI_Drones_DeleteDrone";
+                displayName = "Delete Drone After Detonation";
+                tooltip = "Remove the drone when its payload goes off instead of leaving a wreck - few FPV drones have a proper destroyed model, and very little is left of a real one. Default on.";
+                defaultValue = "true";
+            };
+            class AttackEmptyVehicles: Checkbox {
+                property = "FPV_AI_Drones_AttackEmptyVehicles";
+                displayName = "Attack Empty Vehicles";
+                tooltip = "Also attack vehicles without a crew, if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first. Default off.";
+                defaultValue = "false";
+            };
+            class OperatorRequired: Checkbox {
+                property = "FPV_AI_Drones_OperatorRequired";
+                displayName = "UAV Operator Required";
+                tooltip = "Synchronise one or more soldiers to this module as the drones' operators. When the last of them is killed, the drones lose their pilot: engines off, and they come down. Eden editor only (Zeus can't synchronise). Default off.";
+                defaultValue = "false";
+            };
             class AllowObjectParent: Checkbox {
                 property = "FPV_AI_Drones_AllowObjectParent";
                 displayName = "Allow Object Parent";
@@ -250,6 +275,31 @@ class CfgVehicles {
                 typeName = "NUMBER";
                 defaultValue = "100";
             };
+            class SecondPassChance: Edit {
+                property = "FPV_AI_Drones_SecondPassChance";
+                displayName = "Second Pass Chance (%)";
+                tooltip = "When an attack run misses (Accuracy below 100): the chance that the drone flies low past the target and comes round for another run, instead of going down beside it. Every new run rolls Accuracy again. Default 50.";
+                typeName = "NUMBER";
+                defaultValue = "50";
+            };
+            class DeleteDrone: Checkbox {
+                property = "FPV_AI_Drones_DeleteDrone";
+                displayName = "Delete Drone After Detonation";
+                tooltip = "Remove the drone when its payload goes off instead of leaving a wreck - few FPV drones have a proper destroyed model, and very little is left of a real one. Default on.";
+                defaultValue = "true";
+            };
+            class AttackEmptyVehicles: Checkbox {
+                property = "FPV_AI_Drones_AttackEmptyVehicles";
+                displayName = "Attack Empty Vehicles";
+                tooltip = "Also attack vehicles without a crew, if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first. Default off.";
+                defaultValue = "false";
+            };
+            class OperatorRequired: Checkbox {
+                property = "FPV_AI_Drones_OperatorRequired";
+                displayName = "UAV Operator Required";
+                tooltip = "Synchronise one or more soldiers to this module as the drones' operators. When the last of them is killed, the drones lose their pilot: engines off, and they come down. Eden editor only (Zeus can't synchronise). Default off.";
+                defaultValue = "false";
+            };
             class AllowObjectParent: Checkbox {
                 property = "FPV_AI_Drones_AllowObjectParent";
                 displayName = "Allow Object Parent";
@@ -359,6 +409,31 @@ class CfgVehicles {
                 tooltip = "Chance that an attack run is aimed at the target itself. The others miss: the drone comes down beside the target, a few blast radii away, and its payload goes off there. 100 = no planned misses (a swerving target can still make it miss). Default 100.";
                 typeName = "NUMBER";
                 defaultValue = "100";
+            };
+            class SecondPassChance: Edit {
+                property = "FPV_AI_Drones_SecondPassChance";
+                displayName = "Second Pass Chance (%)";
+                tooltip = "When an attack run misses (Accuracy below 100): the chance that the drone flies low past the target and comes round for another run, instead of going down beside it. Every new run rolls Accuracy again. Default 50.";
+                typeName = "NUMBER";
+                defaultValue = "50";
+            };
+            class DeleteDrone: Checkbox {
+                property = "FPV_AI_Drones_DeleteDrone";
+                displayName = "Delete Drone After Detonation";
+                tooltip = "Remove the drone when its payload goes off instead of leaving a wreck - few FPV drones have a proper destroyed model, and very little is left of a real one. Default on.";
+                defaultValue = "true";
+            };
+            class AttackEmptyVehicles: Checkbox {
+                property = "FPV_AI_Drones_AttackEmptyVehicles";
+                displayName = "Attack Empty Vehicles";
+                tooltip = "Also attack vehicles without a crew, if their faction belongs to a side the drone attacks (civilian vehicles never). Crewed targets still come first. Default off.";
+                defaultValue = "false";
+            };
+            class OperatorRequired: Checkbox {
+                property = "FPV_AI_Drones_OperatorRequired";
+                displayName = "UAV Operator Required";
+                tooltip = "Synchronise one or more soldiers to this module as the drones' operators. When the last of them is killed, the drones lose their pilot: engines off, and they come down. Eden editor only (Zeus can't synchronise). Default off.";
+                defaultValue = "false";
             };
             class AllowObjectParent: Checkbox {
                 property = "FPV_AI_Drones_AllowObjectParent";

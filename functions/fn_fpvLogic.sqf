@@ -26,7 +26,10 @@ params [
     ["_attackSpeedKmh", -1],      // top speed of the attack run; -1 = 180 (vehicles) / 144 (infantry)
     ["_cruiseSpeedKmh", -1],      // speed on waypoints, before a target is found; -1 = 126
     ["_brakingTime", -1],         // seconds to stop from full speed - how heavy the drone is; -1 = default below
-    ["_hitChance", -1]            // % of attack runs aimed at the target itself, the rest miss; -1 = 100
+    ["_hitChance", -1],           // % of attack runs aimed at the target itself, the rest miss; -1 = 100
+    ["_secondPass", -1],          // % of missed runs that fly past and come round for another; -1 = 50
+    ["_deleteDrone", true],       // remove the drone when its payload goes off
+    ["_attackEmpty", false]       // also attack vehicles with no crew, by their faction's side
 ];
 // Since v1.2 _attackDistance, _attackDistance2D, _attackHeight and the delay/stuck
 // parameters are unused (the attack run is flown below); they stay for compatibility.
@@ -39,6 +42,7 @@ private _cruiseSpeed = if (_cruiseSpeedKmh > 0) then { (_cruiseSpeedKmh / 3.6) m
 if (_brakingTime <= 0) then { _brakingTime = 2 };   // same default as the modules' setting (config.cpp)
 _brakingTime = (_brakingTime max 0.2) min 20;
 _hitChance = if (_hitChance < 0) then { 100 } else { (_hitChance max 0) min 100 };
+_secondPass = if (_secondPass < 0) then { 50 } else { (_secondPass max 0) min 100 };
 
 // Movement commands only take effect where the drone is local. Bail out rather
 // than issuing orders that silently do nothing.
@@ -64,6 +68,32 @@ private _is_dead = {
     (isNull _object) || !(alive _object)
 };
 
+// Taken out without being destroyed - by a drone jammer, the mission, or its operator
+// being killed (the module's "UAV Operator Required"). Such a drone is left alone for
+// good and comes down like any drone without a pilot. v1.3.0 kept flying it: both
+// handlers steer it every frame without listening to the engine, and the waypoint one
+// even started its engine again - a Workshop user's jammer killed a drone's crew and
+// it stayed in the air, engines running. Its AI switched off ("MOVE") counts too: this
+// script only ever switches off the drone's targeting. "" while it can fly.
+private _disabledReason = {
+    params ["_u"];
+    if (_u getVariable ["FPV_AI_Drones_disabled", false]) exitWith { _u getVariable ["FPV_AI_Drones_disabledWhy", "disabled"] };
+    private _crew = (crew _u) select { alive _x };
+    if (_crew isEqualTo []) exitWith { "no living crew" };
+    // Only if it could when this script took it on: a drone mod may report a healthy drone as unable.
+    if (!canMove _u && { _u getVariable ["FPV_AI_Drones_couldMove", true] }) exitWith { "engine or rotor destroyed" };
+    if ((fuel _u) <= 0) exitWith { "out of fuel" };
+    if ((_crew findIf { !(_x checkAIFeature "MOVE") }) >= 0) exitWith { "its AI was switched off (jammed?)" };
+    ""
+};
+private _markDisabled = {
+    params ["_u", "_why"];
+    if (isNull _u || { _u getVariable ["FPV_AI_Drones_disabled", false] }) exitWith {};
+    _u setVariable ["FPV_AI_Drones_disabled", true, true];
+    _u setVariable ["FPV_AI_Drones_disabledWhy", _why];
+    diag_log format ["FPV_AI_Drones: drone %1 no longer flown: %2", _u, _why];
+};
+
 // Whether _other is a target under the module's "Target Sides" setting.
 //   ENEMIES - whatever the mission's side relations call hostile to the drone (default, as in v1.1)
 //   EAST / WEST / GUER - that side only, regardless of relations
@@ -71,6 +101,12 @@ private _is_dead = {
 private _isHostile = {
     params ["_uav", "_other", "_mode"];
     private _s = side _other;
+    // An empty vehicle has no side of its own (it reads as civilian). With "Attack Empty
+    // Vehicles" it counts as its faction's side from config, so an abandoned enemy car is
+    // a target and a civilian one never is. Wrecks are never targets.
+    if (_attackEmpty && { alive _other } && { !(_other isKindOf "CAManBase") } && { ({ alive _x } count crew _other) == 0 }) then {
+        _s = [east, west, resistance, civilian] param [getNumber (configOf _other >> "side"), civilian];
+    };
     switch (_mode) do {
         case "EAST": { _s == east };
         case "WEST": { _s == west };
@@ -92,7 +128,7 @@ private _findNearestEnemyOfType = {
     };
 
     private _enemies = _targets select {
-        ([_uav, _x, _sides] call _isHostile) && { [_x, _kinds] call _isUnitOfKind }
+        alive _x && { [_uav, _x, _sides] call _isHostile } && { [_x, _kinds] call _isUnitOfKind }
     };
 
     private _nearestEnemy = objNull;
@@ -107,6 +143,8 @@ private _findNearestEnemyOfType = {
         // 6 drones went for 2 tanks, blew each other up and left 4 vehicles untouched.
         private _claims = { alive _x && { _x != _uav } } count (_x getVariable ["FPV_AI_Drones_claims", []]);
         private _score = _distance + (150 * _claims);
+        // Crewed targets first: an empty one counts as 150 m further away.
+        if (_attackEmpty && { !(_x isKindOf "CAManBase") } && { ({ alive _x } count crew _x) == 0 }) then { _score = _score + 150; };
         if (_isValidEnemy && { _distance < _detectionRange } && { _score < _bestScore }) then {
             _bestScore = _score;
             _nearestEnemy = _x;
@@ -135,7 +173,16 @@ private _isExternallyControlled = {
 // it (the Ukraine FPV Drone mod does on a payload change), and a copied "true" kept
 // the replacement from ever being flown. "initialized" stays as plain information.
 if ((_uavInstance getVariable ["FPV_AI_Drones_runner", objNull]) isEqualTo _uavInstance) exitWith {};
+if (isNil { _uavInstance getVariable "FPV_AI_Drones_couldMove" }) then { _uavInstance setVariable ["FPV_AI_Drones_couldMove", canMove _uavInstance]; };
+// A disabled drone stays down, and its AI stays as whatever disabled it left it (the
+// enableAI below would undo a jammer). Marked only for a drone this script has flown:
+// a freshly placed one may just not have its crew yet (Zeus adds it a moment later).
+private _whyDisabled = [_uavInstance] call _disabledReason;
+if (_whyDisabled != "") exitWith {
+    if (_uavInstance getVariable ["FPV_AI_Drones_flown", false]) then { [_uavInstance, _whyDisabled] call _markDisabled; };
+};
 _uavInstance setVariable ["FPV_AI_Drones_runner", _uavInstance];
+_uavInstance setVariable ["FPV_AI_Drones_flown", true];
 
 _uavInstance setBehaviour "CARELESS";
 _uavInstance setSkill 1;
@@ -217,12 +264,12 @@ private _separation = {
 private _cruiseState = createHashMapFromArray [
     ["uav", _uavInstance], ["dest", []], ["next", []], ["turns", 0], ["stop", false],
     ["speed", _cruiseSpeed], ["accel", _cruiseSpeed / _brakingTime],
-    ["height", _initialSearchHeight], ["separate", _separation]
+    ["height", _initialSearchHeight], ["separate", _separation], ["disabled", _disabledReason]
 ];
 private _cruise = {
     private _s = _thisArgs select 0;
     private _uav = _s get "uav";
-    if ((_s get "stop") || { isNull _uav } || { !alive _uav }) exitWith {
+    if ((_s get "stop") || { isNull _uav } || { !alive _uav } || { ([_uav] call (_s get "disabled")) != "" }) exitWith {
         removeMissionEventHandler ["EachFrame", _thisEventHandler];
     };
     private _dest = _s get "dest";
@@ -307,6 +354,9 @@ while {isNull _nearestEnemy && (!isNull _uavInstance)} do {
 	if ([_uavInstance] call _is_dead) then {
 		break;
 	};
+	if (([_uavInstance] call _disabledReason) != "") then {
+		break;
+	};
 	_nearestEnemy = [_uavInstance, _unitKinds, _targetSource, _allowObjectParent, _targetDetectionRange, _targetSides] call _findNearestEnemyOfType;
 	// Claim it and go straight away: other drones choosing in the same instant must
 	// see the claim (with the sleep below in between, a whole swarm picked the same
@@ -377,6 +427,10 @@ _cruiseState set ["stop", true];
 // Reachable whenever the drone dies or is deleted mid-search. This used to be
 // "continue" at script scope, outside any loop, which throws a script error.
 if (isNull _nearestEnemy) exitWith {
+	if (!isNull _uavInstance && { alive _uavInstance }) then {
+		private _why = [_uavInstance] call _disabledReason;
+		if (_why != "") then { [_uavInstance, _why] call _markDisabled; };
+	};
 	if (!isNull _uavInstance) then {
 		_uavInstance setVariable ["initialized", false];
 		_uavInstance setVariable ["FPV_AI_Drones_runner", objNull];
@@ -404,11 +458,21 @@ private _attackSpeed = if (_attackSpeedKmh > 0) then { (_attackSpeedKmh / 3.6) m
     if ("Man" in _unitKinds) then { 40 } else { 50 }
 };
 
-// Accuracy: each run is rolled once against the hit chance. A miss is aimed at the
-// ground beside the target, a few blast radii of the payload away so the miss is a
-// miss, and the payload goes off there.
-private _miss = [];
-if ((random 100) >= _hitChance) then {
+// Accuracy: each run is rolled against the hit chance - at the start, and again after
+// every fly-by. A miss is aimed beside the target, a few blast radii of the payload
+// away so the miss is a miss. "Second Pass Chance" decides what kind of miss: a fly-by,
+// low past that spot and round for another run (a Workshop wish: "not always crash into
+// the ground, but a chance to make a second and more attack runs"), or the drone comes
+// down there and its payload goes off. Sets the run state's "miss" (offset from the
+// target; [] = aimed at it) and "flyby". Runs inside the handler too: nothing may sleep.
+private _planMiss = {
+    params ["_s"];
+    private _uav = _s get "uav";
+    private _target = _s get "target";
+    _s set ["miss", []];
+    _s set ["flyby", false];
+    if ((random 100) < (_s get "hitChance")) exitWith {};
+    private _miss = [];
     private _blastRadius = 0;
     private _reach = 0;
     {
@@ -419,16 +483,16 @@ if ((random 100) >= _hitChance) then {
         // demo charge (1000, 3 m) still killed 3 of 4 from 9-11 m - so against infantry
         // a miss lands out there instead: ~17 m for the demo charge.
         _reach = _reach max (_r * ((getNumber (configFile >> "CfgAmmo" >> _x >> "indirectHit")) max 1) ^ 0.25);
-    } forEach (_customAmmo splitString ", ");
+    } forEach (_s get "ammo");
     private _off = ([(_blastRadius * 2.5) max 6, _reach] select (_target isKindOf "Man")) + random 4;
     private _tp = getPosASL _target;
-    private _toT = _tp vectorDiff (getPosASL _uavInstance);
+    private _toT = _tp vectorDiff (getPosASL _uav);
     private _fwd = vectorNormalized [_toT select 0, _toT select 1, 0];
     if (_fwd isEqualTo [0, 0, 0]) then { _fwd = [0, 1, 0]; };
     // Beside the target or short of it - never beyond it, or the dive would cross it.
     // Of those spots, the one farthest from anyone else near the target: a miss on one
     // soldier must not come down in the middle of the rest of the squad.
-    private _others = ((ASLToAGL _tp) nearEntities [["Man", "LandVehicle", "Air", "Ship"], _off * 2 + 10]) select { alive _x && { _x != _uavInstance } };
+    private _others = ((ASLToAGL _tp) nearEntities [["Man", "LandVehicle", "Air", "Ship"], _off * 2 + 10]) select { alive _x && { _x != _uav } };
     private _bestClear = -1;
     {
         private _a = _x + (random 20) - 10;   // degrees from straight ahead
@@ -438,7 +502,10 @@ if ((random 100) >= _hitChance) then {
         { _clear = _clear min (_spot distance2D (getPosASL _x)); } forEach _others;
         if (_clear > _bestClear) then { _bestClear = _clear; _miss = _cand; };
     } forEach ([90, -90, 135, -135, 180] call BIS_fnc_arrayShuffle);
-    diag_log format ["FPV_AI_Drones: drone %1 will miss (accuracy %2 percent): aiming %3m from %4, %5m from anyone", _uavInstance, _hitChance, round vectorMagnitude _miss, _target, round _bestClear];
+    _s set ["miss", _miss];
+    _s set ["flyby", (random 100) < (_s get "secondPass")];
+    diag_log format ["FPV_AI_Drones: drone %1 will miss (accuracy %2 percent): %3 %4m from %5, %6m from anyone",
+        _uav, _s get "hitChance", ["coming down", "flying past"] select (_s get "flyby"), round vectorMagnitude _miss, _target, round _bestClear];
 };
 
 // Fallback trigger radius around the target's centre mass. Vehicles are normally
@@ -515,6 +582,9 @@ private _guide = {
             } else { _x setDamage 1; };
         } forEach (_s get "charges");
         if (!isNull _uav) then { _uav setDamage 1; };
+        // "Delete Drone After Detonation": no wreck - few FPV drones have a proper
+        // destroyed model, and very little is left of a real one (a Workshop wish).
+        if ((_s get "deleteDrone") && { !isNull _uav }) then { deleteVehicle _uav; };
         _s set ["result", "detonated"];
         _s set ["phase", "done"];
         removeMissionEventHandler ["EachFrame", _thisEventHandler];
@@ -524,9 +594,11 @@ private _guide = {
     // The point the run is flown at: the target's centre mass (not the ground under
     // it) - or for a planned miss, the ground beside it, moving with it.
     private _miss = _s get "miss";
+    private _flyingPast = (_s get "flyby") && { _miss isNotEqualTo [] };
     private _tPos = if (_miss isEqualTo []) then { (getPosASL _target) vectorAdd [0, 0, 1] } else {
         private _g = (getPosASL _target) vectorAdd _miss;
-        [_g select 0, _g select 1, getTerrainHeightASL _g]
+        // A fly-by passes the spot 5 m up; otherwise the drone goes down on it.
+        [_g select 0, _g select 1, (getTerrainHeightASL _g) + ([0, 5] select _flyingPast)]
     };
 
     // Drone gone: it hit something, its own warhead went off and the Crocus mod
@@ -540,6 +612,15 @@ private _guide = {
             _s set ["phase", "done"];
             removeMissionEventHandler ["EachFrame", _thisEventHandler];
         };
+    };
+
+    // Taken out mid-run (jammer, crew killed, operator dead...): stop flying it, here and
+    // now. It comes down where it is, and the payload doesn't go off on the target.
+    private _whyDisabled = [_uav] call (_s get "disabled");
+    if (_whyDisabled != "") exitWith {
+        _s set ["result", "drone disabled: " + _whyDisabled];
+        _s set ["phase", "done"];
+        removeMissionEventHandler ["EachFrame", _thisEventHandler];
     };
 
     // Stop requested by the script below (target dead, out of range, taken over...).
@@ -571,12 +652,31 @@ private _guide = {
     private _blast = _s get "blast";
     _s set ["lastPos", _p];
 
+    // A fly-by: once past its spot (within 6 m, or getting further again after coming
+    // within 15 m) the pass is over - roll for the next run. The steering below turns
+    // the drone back: low with the target behind it counts as missed, so it climbs first.
+    if (_flyingPast) then {
+        private _dFly = _p vectorDistance _tPos;
+        private _bestFly = (_s getOrDefault ["flyBest", 1e9]) min _dFly;
+        _s set ["flyBest", _bestFly];
+        if (_dFly < 6 || { _bestFly < 15 && { _dFly > _bestFly + 2 } }) then {
+            private _passes = (_uav getVariable ["FPV_AI_Drones_passes", 0]) + 1;
+            _uav setVariable ["FPV_AI_Drones_passes", _passes, true];
+            _s set ["passes", (_s getOrDefault ["passes", 0]) + 1];
+            _s deleteAt "flyBest";
+            [_s] call (_s get "planMiss");
+            diag_log format ["FPV_AI_Drones: drone %1 flew past %2 (pass %3) - next run %4",
+                _uav, _target, _passes, ["aimed at it", "another miss"] select ((_s get "miss") isNotEqualTo [])];
+        };
+    };
+
     // --- trigger: in blast range, or will be by next frame, ...
+    // (not on a fly-by: its spot is where the drone passes, not where it goes off)
     private _fire = [];
     private _fireAim = [];   // where a warhead payload is pointed - see _arm
-    if ((_p vectorDistance _tPos) <= _blast + ((vectorMagnitude _v) * _dt)) then { _fire = _p; _fireAim = _tPos; };
+    if (!_flyingPast && { (_p vectorDistance _tPos) <= _blast + ((vectorMagnitude _v) * _dt) }) then { _fire = _p; _fireAim = _tPos; };
     // ... or passed through it since last frame (low frame rate), ...
-    if (_fire isEqualTo []) then {
+    if (_fire isEqualTo [] && { !_flyingPast }) then {
         private _seg = _p vectorDiff _last;
         private _segLen2 = _seg vectorDotProduct _seg;
         if (_segLen2 > 0.01) then {
@@ -589,19 +689,24 @@ private _guide = {
     // then the charge goes off right on the surface it's about to hit. "About to" is
     // two frames' travel plus 1 m for the drone's own size: with less, at 50 m/s its
     // body still hit the hull between two checks (traced: skin 2.6 m away, then impact).
-    if (_fire isEqualTo [] && { (_p vectorDistance _tPos) < 15 }) then {
+    // Flying past, only the target itself sets it off - not the ground it skims.
+    private _near = if (_flyingPast) then { (getPosASL _target) vectorAdd [0, 0, 1] } else { _tPos };
+    if (_fire isEqualTo [] && { (_p vectorDistance _near) < 15 }) then {
         private _reach = ((vectorMagnitude _v) * _dt * 2) + 1;
         private _hits = lineIntersectsSurfaces [_p, _p vectorAdd ((vectorNormalized _v) vectorMultiply _reach), _uav, objNull, true, 1, "FIRE", "GEOM"];
         // The target's skin straight towards its centre can be nearer than along the path.
         if (_hits isEqualTo []) then {
-            _hits = (lineIntersectsSurfaces [_p, _tPos, _uav, objNull, true, 1, "FIRE", "GEOM"]) select { ((_x select 0) vectorDistance _p) < _reach };
+            _hits = (lineIntersectsSurfaces [_p, _near, _uav, objNull, true, 1, "FIRE", "GEOM"]) select { ((_x select 0) vectorDistance _p) < _reach };
         };
         if (_hits isNotEqualTo []) then {
             (_hits select 0) params ["_hitPos", "_hitNormal", "_hitObj", "_hitParent"];
-            _fire = _hitPos vectorAdd (_hitNormal vectorMultiply 0.3);
             // The target's own hull: aim the warhead into it. Anything else (the ground,
             // a wall): it goes off along the flight path.
-            if (!isNull _target && { [_target, objectParent _target] findIf { !isNull _x && { _x in [_hitObj, _hitParent] } } >= 0 }) then { _fireAim = _hitPos; };
+            private _onTarget = !isNull _target && { [_target, objectParent _target] findIf { !isNull _x && { _x in [_hitObj, _hitParent] } } >= 0 };
+            if (!_flyingPast || { _onTarget }) then {
+                _fire = _hitPos vectorAdd (_hitNormal vectorMultiply 0.3);
+                if (_onTarget) then { _fireAim = _hitPos; };
+            };
         };
     };
     if (_fire isNotEqualTo []) exitWith { [_s, _fire, false, _fireAim] call (_s get "arm"); };
@@ -676,7 +781,10 @@ private _guide = {
         private _sinA = if (_cosA < 0) then { 1 } else { sqrt ((1 - (_cosA ^ 2)) max 0) };
         private _vTurn = if (_sinA > 0.01) then { sqrt (0.8 * (_s get "accel") * _dAim / (2 * _sinA)) } else { _speed };
         _vDes = (_toAim vectorMultiply (1 / _dAim)) vectorMultiply ((_speed min _vTurn) max (((vectorMagnitude _tVel) + 10) max 12));
-        _s set ["wantAgl", 2];
+        // A fly-by levels out at its spot's height instead of diving on through it:
+        // aimed at like a dive, the drone reached it still sinking and hit the ground.
+        if (_flyingPast) then { _vDes set [2, (_vDes select 2) max (((_tPos select 2) - (_p select 2)) * 2)]; };
+        _s set ["wantAgl", [2, 5] select _flyingPast];
     } else {
         // Glide path: down at ~1:3 to the dive's entry point (30 m out, _termH up),
         // never higher above the target than the search height (unless the dive needs
@@ -755,11 +863,14 @@ private _guide = {
 
 private _state = createHashMapFromArray [
     ["uav", _uavInstance], ["target", _target], ["phase", "run"], ["abort", ""], ["result", ""],
-    ["speed", _attackSpeed], ["accel", _attackSpeed / _brakingTime], ["cruise", _initialSearchHeight], ["miss", _miss],
+    ["speed", _attackSpeed], ["accel", _attackSpeed / _brakingTime], ["cruise", _initialSearchHeight],
+    ["miss", []], ["flyby", false], ["hitChance", _hitChance], ["secondPass", _secondPass], ["planMiss", _planMiss],
+    ["deleteDrone", _deleteDrone], ["disabled", _disabledReason],
     ["blast", _blastRange], ["ammo", _customAmmo splitString ", "],
     ["lastPos", getPosASL _uavInstance], ["arm", _arm], ["separate", _separation],
     ["charges", []], ["blastPos", []], ["impacted", false]
 ];
+[_state] call _planMiss;
 _uavInstance engineOn true;
 addMissionEventHandler ["EachFrame", _guide, [_state]];
 if (missionNamespace getVariable ["FPV_AI_Drones_debug", false]) then {
@@ -778,13 +889,17 @@ private _bestAt = diag_tickTime;
 private _lastLook = diag_tickTime;
 private _lastOrder = -1e9;
 private _pilotAgl = _initialSearchHeight;
+private _passesSeen = 0;
 while { (_state get "phase") == "run" && { (_state get "abort") == "" } } do {
     sleep 0.25;
     // Drone just died: the handler decides whether that was the hit. Don't race it.
     if ([_uavInstance] call _is_dead) then { continue; };
     private _d = _uavInstance distance _target;
     if (_d < _best - 3) then { _best = _d; _bestAt = diag_tickTime; };
+    // A fly-by starts a new run: it gets the full 12 s again.
+    if ((_state getOrDefault ["passes", 0]) != _passesSeen) then { _passesSeen = _state getOrDefault ["passes", 0]; _best = _d; _bestAt = diag_tickTime; };
     private _reason = switch (true) do {
+        case (([_uavInstance] call _disabledReason) != ""): { "drone disabled: " + ([_uavInstance] call _disabledReason) };
         case ([_uavInstance] call _isExternallyControlled): { "taken over by a player (UAV terminal or Zeus)" };
         case ([_target] call _is_dead): { "target destroyed before the drone got there" };
         // Crew killed (e.g. by another drone): the hull is still "alive" but no longer
@@ -849,6 +964,10 @@ if ((_state get "result") == "detonated") then {
         clientOwner, (diag_tickTime - _acquiredAt) toFixed 1];
 } else {
     diag_log format ["FPV_AI_Drones: drone %1 broke off its attack run: %2", _uavName, _state get "result"];
+    if (!isNull _uavInstance && { alive _uavInstance }) then {
+        private _why = [_uavInstance] call _disabledReason;
+        if (_why != "") then { [_uavInstance, _why] call _markDisabled; };
+    };
 };
 
 // At the end of the script, ensure cleanup

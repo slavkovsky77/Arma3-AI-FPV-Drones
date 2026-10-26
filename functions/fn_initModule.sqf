@@ -72,6 +72,10 @@ private _attackSpeed = ["AttackSpeed", -1] call _setting;   // km/h; -1 = fpvLog
 private _cruiseSpeed = ["CruiseSpeed", -1] call _setting;   // km/h on waypoints; -1 = fpvLogic's default
 private _brakingTime = ["BrakingTime", -1] call _setting;   // s from full speed to a stop; -1 = fpvLogic's default
 private _hitChance = ["HitChance", -1] call _setting;       // %; -1 = 100
+private _secondPass = ["SecondPassChance", -1] call _setting;   // %; -1 = fpvLogic's default
+private _deleteDrone = ["DeleteDrone", true] call _setting;
+private _attackEmpty = ["AttackEmptyVehicles", false] call _setting;
+private _operatorRequired = ["OperatorRequired", false] call _setting;
 
 // The module's area: drones within this distance of where it was placed are
 // picked up - at placement, and any placed there later (a Zeus "drone station").
@@ -80,8 +84,9 @@ private _center = getPosATL _logic;   // fixed: a module attached to a drone sho
 
 if (_enableChat) then {
     private _msg = format [
-        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, TargetSides: %3, AttackSpeed: %4 km/h, AllowObjectParent: %5, CustomAmmo: %6, TargetDetectionRange: %7, CruiseSpeed: %8 km/h, BrakingTime: %9 s, Accuracy: %10 percent",
-        _unitKinds, _targetSource, _targetSides, _attackSpeed, _allowObjectParent, _customAmmo, _targetDetectionRange, _cruiseSpeed, _brakingTime, _hitChance
+        "FPV Drone Module: UnitKinds: %1, TargetSource: %2, TargetSides: %3, AttackSpeed: %4 km/h, AllowObjectParent: %5, CustomAmmo: %6, TargetDetectionRange: %7, CruiseSpeed: %8 km/h, BrakingTime: %9 s, Accuracy: %10 percent, SecondPass: %11 percent, DeleteDrone: %12, AttackEmpty: %13, OperatorRequired: %14",
+        _unitKinds, _targetSource, _targetSides, _attackSpeed, _allowObjectParent, _customAmmo, _targetDetectionRange, _cruiseSpeed, _brakingTime, _hitChance,
+        _secondPass, _deleteDrone, _attackEmpty, _operatorRequired
     ];
     // Runs on the server, so it has to be broadcast to reach any player.
     _msg remoteExec ["systemChat", 0];
@@ -127,6 +132,18 @@ private _tag = {
 
 // 1. Eden editor: units synchronised to the module.
 private _drones = _units select { [_x] call _isDroneCandidate };
+
+// "UAV Operator Required" (a Workshop wish): soldiers synced to the module are its
+// drones' operators. When the last of them is dead, the drones lose their pilot - see
+// the loop below. Not a drone's own UAV crew, which is in a drone.
+private _operators = if (_operatorRequired) then {
+    _units select { _x isKindOf "CAManBase" && { alive _x } && { !(unitIsUAV (vehicle _x)) } }
+} else { [] };
+if (_operatorRequired && { _operators isEqualTo [] }) then {
+    private _note = "FPV AI Drones: 'UAV Operator Required' is on, but no soldier is synced to the module - its drones fly without one.";
+    diag_log text _note;
+    if (_enableChat) then { _note remoteExec ["systemChat", 0]; };
+};
 
 // 2. Zeus: dropped straight onto a drone. Zeus attaches rather than syncing, so
 //    _units is empty here and the old code gave up at this point.
@@ -207,6 +224,10 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
     _cruiseSpeed,
     _brakingTime,
     _hitChance,
+    _secondPass,
+    _deleteDrone,
+    _attackEmpty,
+    _operators,
     _key,
     _tag
 ] spawn {
@@ -238,6 +259,10 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
         "_cruiseSpeed",
         "_brakingTime",
         "_hitChance",
+        "_secondPass",
+        "_deleteDrone",
+        "_attackEmpty",
+        "_operators",
         "_key",
         "_tag"
     ];
@@ -316,6 +341,16 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
             // Current group, for a replacement's route (see _tag): Zeus creates the crew
             // a moment after the drone, and can regroup it.
             if (!isNull group _x) then { _x setVariable ["FPV_AI_Drones_group", group _x]; };
+            // "UAV Operator Required": the last operator is dead - the drone loses its
+            // pilot. Engine off and no fuel; fpvLogic leaves a drone like that alone.
+            if (_operators isNotEqualTo [] && { ({ alive _x } count _operators) == 0 } && { !(_x getVariable ["FPV_AI_Drones_disabled", false]) }) then {
+                _x setFuel 0;
+                _x engineOn false;
+                _x setVariable ["FPV_AI_Drones_disabled", true, true];
+                _x setVariable ["FPV_AI_Drones_disabledWhy", "its operator was killed"];
+                diag_log format ["FPV_AI_Drones: drone %1 lost its operator - engine off, it comes down", _x];
+                if (_enableChat) then { (format ["FPV AI Drones: %1 lost its operator", _x]) remoteExec ["systemChat", 0]; };
+            };
             // fpvLogic guards re-entry with the drone's "initialized" variable,
             // so re-spawning here every 2s picks up drones that finished or lost
             // a target without stacking threads on ones already running.
@@ -339,7 +374,10 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 _attackSpeed,
                 _cruiseSpeed,
                 _brakingTime,
-                _hitChance
+                _hitChance,
+                _secondPass,
+                _deleteDrone,
+                _attackEmpty
             ] spawn FPV_AI_Drones_fnc_fpvLogic;
         } forEach _active;
     };

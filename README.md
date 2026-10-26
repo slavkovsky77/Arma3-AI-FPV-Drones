@@ -109,6 +109,10 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Cruise Speed | 126 | 126 | Speed on waypoints, before a target is found (km/h) |
 | Braking Time | 2 | 2 | Seconds to stop from full speed - how heavy the drone is. Acceleration for braking, speeding up and turning = top speed / braking time. Higher: wider turns, slower to react, a target that swerves late can get away |
 | Accuracy | 100 | 100 | % of attack runs aimed at the target. The rest come down beside it, a few blast radii of the payload away (vehicles: 2.5x the payload's blast radius + 0-4 m, at least 6 m; infantry: where the blast is down to about 1 point of damage, ~17 m for the demo charge) |
+| Second Pass Chance | 50 | 50 | % of missed runs that fly low past the target and come round for another run (a new Accuracy roll) instead of going down beside it |
+| Delete Drone After Detonation | on | on | No wreck left when the payload goes off |
+| Attack Empty Vehicles | off | off | Also attack vehicles with no crew if their faction is one the drone attacks (by config side; civilian never). Crewed targets come first |
+| UAV Operator Required | off | off | Soldiers synced to the module are the operators; when the last one is killed the drones lose their pilot (fuel 0, engine off) and come down. Eden only |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 
@@ -137,6 +141,11 @@ near every move point and could not catch a moving vehicle:
   than the target + 10 m/s); in the final dive it slows more if the turn is still too tight
 - missed low (the target swerved, or it overshot): stops sinking, climbs and makes a new pass, as
   long as there is room to stop - otherwise it keeps diving at the target
+- a planned miss is either a fly-by (Second Pass Chance): low past its spot, 5 m up, then round
+  for another run with a new Accuracy roll - or the drone comes down on the spot
+- a drone that is taken out without being destroyed - no living crew, engine or rotor gone, no
+  fuel, its AI switched off (a drone jammer), or its operator killed - is not flown any more and
+  comes down like any drone without a pilot
 - steers from the velocity it set the frame before, so the AI pilot can't add or remove speed
   between frames (it was holding the drone up against the glide); keeping clear of another drone
   may use 3x the acceleration budget
@@ -183,7 +192,10 @@ if (isServer) then {
         144,                        // attack speed in km/h (optional, default 180 vehicles / 144 infantry)
         126,                        // cruise speed on waypoints in km/h (optional)
         1.5,                        // braking time in s (optional): how heavy the drone feels
-        100                         // accuracy in % (optional): the other runs miss on purpose
+        100,                        // accuracy in % (optional): the other runs miss on purpose
+        50,                         // second pass chance in % (optional): missed runs that fly past and come round
+        true,                       // delete the drone when its payload goes off (optional)
+        false                       // also attack empty vehicles of an enemy faction (optional)
     ] spawn FPV_AI_Drones_fnc_fpvLogic;
 };
 ```
@@ -262,7 +274,10 @@ Stages: empty Eden-placed drone (1), AP vs infantry (2), Zeus-style attached mod
 same-class drone that must be left alone (3), module placed on the ground near a drone (4), module
 with no drone (5), plain-drone waypoint baselines (6, info only), managed drone sent by waypoint (7),
 module started through the Zeus code path from the player's machine (8), Independent drone (9),
-Target Sides (10), tank driving past (11), Accuracy 0 % - AT and AP drones must miss (12). An
+Target Sides (10), tank driving past (11), Accuracy 0 % - AT and AP drones must miss (12), drones
+taken out mid-flight - crew killed, fuel cut, AI switched off, as a jammer does - must come down (13),
+UAV Operator Required (14), Attack Empty Vehicles on and off (15), Second Pass - fly-bys (16),
+Delete Drone After Detonation on and off (17). An
 attempt that makes no progress for 30 s is stopped early instead of running into its timeout.
 
 ```
