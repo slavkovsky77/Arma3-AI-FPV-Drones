@@ -136,6 +136,20 @@ def focus_game(pid):
     user32.keybd_event(0x12, 0, 2, 0)   # Alt up
 
 
+def go_easy(pid):
+    """Keeps a headless run out of the way of whatever the user is doing on the PC: idle priority
+    on the upper half of the logical processors. Idle priority alone still made a game stutter -
+    the server's threads filled the sibling hyper-threads of the cores the game was using."""
+    k32 = ctypes.windll.kernel32
+    h = k32.OpenProcess(0x0200 | 0x0400, False, pid)   # PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION
+    if not h:
+        return
+    n = os.cpu_count() or 2
+    k32.SetProcessAffinityMask(h, ctypes.c_size_t(((1 << n) - 1) & ~((1 << (n // 2)) - 1)))
+    k32.SetPriorityClass(h, 0x40)   # IDLE_PRIORITY_CLASS
+    k32.CloseHandle(h)
+
+
 def newest(pattern, since=0.0):
     files = [f for f in glob.glob(pattern) if os.path.getmtime(f) >= since]
     return max(files, key=os.path.getmtime) if files else None
@@ -260,6 +274,8 @@ class Missions
         self.server = subprocess.Popen([os.path.join(self.a.arma_dir, "arma3server_x64.exe"), f"-port={PORT}", f"-config={server_cfg}",
                                         f"-profiles={WORK_DIR}", "-name=fpvtest", f"-mod={self.mods}", "-autoInit"],
                                        cwd=self.a.arma_dir, startupinfo=si, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        if self.a.headless:
+            go_easy(self.server.pid)
         listen_deadline = time.time() + 120
         while not udp_listening(PORT):
             if time.time() > listen_deadline:
@@ -425,7 +441,8 @@ def parse():
     p.add_argument("--server-only", action="store_true", help="MP: start just the server; join it yourself from the normal Arma launcher")
     p.add_argument("--manual", action="store_true", help="hands-on: straight to Zeus, game in your normal display mode, left open (default --mode MP)")
     p.add_argument("--headless", action="store_true",
-                   help="just a minimized dedicated server, no game window, no player (stage 8 needs one and is skipped)")
+                   help="just a minimized dedicated server at idle priority on the upper half of the cores - no game "
+                        "window, no focus taken, no player (stage 8 needs one and is skipped)")
     p.add_argument("--timeout-minutes", type=int, default=20)
     p.add_argument("--profile-name", default="vulcan420")
     p.add_argument("--arma-dir", default=r"E:\SteamLibrary\steamapps\common\Arma 3")

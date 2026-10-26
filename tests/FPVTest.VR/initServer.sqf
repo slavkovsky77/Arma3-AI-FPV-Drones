@@ -1021,8 +1021,8 @@ removeMissionEventHandler ["EachFrame", _recorder];
 
 if ([13] call FPVT_fnc_runStage) then {
 // --- Stage 13: a drone taken out without being destroyed -----------------------
-// A drone jammer (or the mission) kills a drone's crew, empties its tank or switches
-// its AI off. The drone must come down, or at least stop - v1.3.0 kept flying it (a
+// A drone jammer (or the mission) kills a drone's crew or empties its tank - the Sania &
+// Volnorez EW jammer kills an AI-flown drone's driver and gunner, as 13a/b do. The drone must come down, or at least stop - v1.3.0 kept flying it (a
 // Workshop report: "AI crew killed by jammer but drone still in the air, engines
 // running"). Each case: a drone on the ground 450 m from a parked tank, detection 500,
 // so it flies a long attack run; 250 m out it is taken out; the tank must survive.
@@ -1052,9 +1052,24 @@ private _caseDisabled = {
 ["a Crocus whose crew is killed mid-attack", "B_Crocus_AT", 500, { params ["_d"]; { _x setDamage 1; } forEach crew _d; }] call _caseDisabled;
 ["an AR-2 Darter whose crew is killed mid-attack", "B_UAV_01_F", 1500, { params ["_d"]; { _x setDamage 1; } forEach crew _d; }] call _caseDisabled;
 ["a Crocus whose fuel is cut mid-attack", "B_Crocus_AT", 2500, { params ["_d"]; _d setFuel 0; }] call _caseDisabled;
-["an AR-2 Darter whose AI is switched off mid-attack", "B_UAV_01_F", 3500, { params ["_d"]; { _x disableAI "MOVE"; } forEach crew _d; }] call _caseDisabled;
 
-// 13e: the same while flying waypoints (no target) - the waypoint handler also started
+// 13d: the other way round - a drone whose AI is switched off before the module takes it
+// on is still flown: the Crocus mod switches off all AI on its own drones a second in.
+// (v1.4-dev read that as jammed, and the Eden drone of stage 1 never took off.)
+_drone = [[3500, 7000, 0], "B_UAV_01_F"] call FPVT_fnc_spawnDrone;
+_drone setVariable ["FPV_AI_Drones_managed", true, true];
+_drone disableAI "ALL";
+{ _x disableAI "ALL"; } forEach crew _drone;
+_tank = [[3500, 7150, 0]] call FPVT_fnc_spawnTank;
+_logic = [[3508, 7000, 0], FPVT_AT] call FPVT_fnc_module;
+[_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
+["Stage 13 - an AR-2 whose AI was switched off beforehand is still flown", _drone, _tank] call FPVT_fnc_show;
+_timedOut = [_drone, _tank, FPVT_fnc_vehicleDone, 60] call FPVT_fnc_await;
+["13d drone with its AI switched off beforehand is still flown", [_tank] call FPVT_fnc_vehicleDone,
+    format ["tank done=%1 damage=%2 | timedOut=%3", [_tank] call FPVT_fnc_vehicleDone, damage _tank toFixed 2, _timedOut]] call FPVT_fnc_check;
+{ deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic;
+
+// 13e: crew killed while flying waypoints (no target) - the waypoint handler also started
 // the engine again in v1.3.0.
 _drone = [[4500, 7000, 0], "B_UAV_01_F", true] call FPVT_fnc_spawnDrone;
 _drone setVariable ["FPV_AI_Drones_managed", true, true];

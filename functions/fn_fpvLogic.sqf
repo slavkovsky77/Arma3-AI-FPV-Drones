@@ -73,8 +73,10 @@ private _is_dead = {
 // good and comes down like any drone without a pilot. v1.3.0 kept flying it: both
 // handlers steer it every frame without listening to the engine, and the waypoint one
 // even started its engine again - a Workshop user's jammer killed a drone's crew and
-// it stayed in the air, engines running. Its AI switched off ("MOVE") counts too: this
-// script only ever switches off the drone's targeting. "" while it can fly.
+// it stayed in the air, engines running. (That jammer, Sania & Volnorez EW, kills an
+// AI-flown drone's driver and gunner.) Its AI being switched off does NOT count: the
+// Crocus mod switches off all AI on its own drones a second in, and this script switches
+// it back on. "" while it can fly.
 private _disabledReason = {
     params ["_u"];
     if (_u getVariable ["FPV_AI_Drones_disabled", false]) exitWith { _u getVariable ["FPV_AI_Drones_disabledWhy", "disabled"] };
@@ -84,7 +86,6 @@ private _disabledReason = {
     // Fuel first: an empty tank makes canMove false too.
     if ((fuel _u) <= 0) exitWith { "out of fuel" };
     if (!canMove _u && { _u getVariable ["FPV_AI_Drones_couldMove", true] }) exitWith { "engine or rotor destroyed" };
-    if ((_crew findIf { !(_x checkAIFeature "MOVE") }) >= 0) exitWith { "its AI was switched off (jammed?)" };
     ""
 };
 private _markDisabled = {
@@ -180,7 +181,13 @@ if (isNil { _uavInstance getVariable "FPV_AI_Drones_couldMove" }) then { _uavIns
 // a freshly placed one may just not have its crew yet (Zeus adds it a moment later).
 private _whyDisabled = [_uavInstance] call _disabledReason;
 if (_whyDisabled != "") exitWith {
-    if (_uavInstance getVariable ["FPV_AI_Drones_flown", false]) then { [_uavInstance, _whyDisabled] call _markDisabled; };
+    if (_uavInstance getVariable ["FPV_AI_Drones_flown", false]) then { [_uavInstance, _whyDisabled] call _markDisabled; } else {
+        // Logged once per reason, so a user's RPT says why a drone just sits there.
+        if ((_uavInstance getVariable ["FPV_AI_Drones_waitWhy", ""]) != _whyDisabled) then {
+            _uavInstance setVariable ["FPV_AI_Drones_waitWhy", _whyDisabled];
+            diag_log format ["FPV_AI_Drones: drone %1 (%2) not flown yet: %3", _uavInstance, typeOf _uavInstance, _whyDisabled];
+        };
+    };
 };
 _uavInstance setVariable ["FPV_AI_Drones_runner", _uavInstance];
 _uavInstance setVariable ["FPV_AI_Drones_flown", true];

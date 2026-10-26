@@ -141,11 +141,12 @@ near every move point and could not catch a moving vehicle:
   than the target + 10 m/s); in the final dive it slows more if the turn is still too tight
 - missed low (the target swerved, or it overshot): stops sinking, climbs and makes a new pass, as
   long as there is room to stop - otherwise it keeps diving at the target
-- a planned miss is either a fly-by (Second Pass Chance): low past its spot, 5 m up, then round
-  for another run with a new Accuracy roll - or the drone comes down on the spot
-- a drone that is taken out without being destroyed - no living crew, engine or rotor gone, no
-  fuel, its AI switched off (a drone jammer), or its operator killed - is not flown any more and
-  comes down like any drone without a pilot
+- a planned miss is either a fly-by (Second Pass Chance): low past its spot, 5 m up, on and
+  up to 25 m some 60 m beyond, then round for another run with a new Accuracy roll - or the
+  drone comes down on the spot
+- a drone that is taken out without being destroyed - no living crew (what a drone jammer such as
+  Sania & Volnorez EW does), engine or rotor gone, no fuel, or its operator killed - is not flown
+  any more and comes down like any drone without a pilot
 - steers from the velocity it set the frame before, so the AI pilot can't add or remove speed
   between frames (it was holding the drone up against the glide); keeping clear of another drone
   may use 3x the acceleration budget
@@ -275,7 +276,8 @@ same-class drone that must be left alone (3), module placed on the ground near a
 with no drone (5), plain-drone waypoint baselines (6, info only), managed drone sent by waypoint (7),
 module started through the Zeus code path from the player's machine (8), Independent drone (9),
 Target Sides (10), tank driving past (11), Accuracy 0 % - AT and AP drones must miss (12), drones
-taken out mid-flight - crew killed, fuel cut, AI switched off, as a jammer does - must come down (13),
+taken out mid-flight - crew killed as a jammer does, fuel cut - must come down, one with its AI
+switched off beforehand (as the Crocus mod does) must still fly (13),
 UAV Operator Required (14), Attack Empty Vehicles on and off (15), Second Pass - fly-bys (16),
 Delete Drone After Detonation on and off (17). An
 attempt that makes no progress for 30 s is stopped early instead of running into its timeout.
