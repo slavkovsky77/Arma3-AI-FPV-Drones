@@ -6,5 +6,5 @@ FIXED
 NEW MODULE SETTINGS
 - UAV Operator Required: synchronise soldiers to the module as the drones' operators. When the last of them is killed, the drones lose their pilot - engines off, and they come down (Eden editor)
 - Attack Empty Vehicles: also attack vehicles without a crew, if their faction is one the drone attacks. Civilian vehicles never; crewed targets still come first. Default off
-- Second Pass Chance (%): when a run misses (Accuracy below 100), the drone can fly low past the target and come round for another run instead of going down beside it. Every new run rolls Accuracy again. Default 50
+- Second Pass Chance (%): when a run misses (Accuracy below 100), the drone can fly low past the target, climb out and come round for another run instead of going down beside it. Every new run rolls Accuracy again. Default 50
 - Delete Drone After Detonation: no wreck is left when the payload goes off - few FPV drones have a proper destroyed model. Default on
