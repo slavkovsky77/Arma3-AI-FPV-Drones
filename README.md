@@ -117,7 +117,7 @@ open them in the editor. Sources live in `missions\` (packed into the PBO) and a
 | Second Pass Chance | 50 | 50 | % of missed runs that fly low past the target and come round for another run (a new Accuracy roll) instead of going down beside it |
 | Delete Drone After Detonation | on | on | No wreck left when the payload goes off |
 | Attack Empty Vehicles | on | on | Also attack vehicles with nobody inside (parked, abandoned) if their faction is one the drone attacks (by config side; civilian never). Crewed targets come first; a vehicle whose crew was killed is not attacked again |
-| UAV Operator Required | off | off | Soldiers synced to the module are the operators; when the last one is killed the drones lose their pilot (fuel 0, engine off) and come down. In Zeus (no syncing, no settings) use the **UAV Operator** module instead: drop it onto a soldier |
+| UAV Operator Required | off | off | Soldiers synced to the module are the operators; when the last one is killed the drones lose their pilot (fuel 0, engine off) and drop: from 30 m up they are down in about 4 s, some 30 m on. In Zeus (no syncing, no settings) use the **UAV Operator** module instead: drop it onto a soldier |
 | Allow Object Parent | true | false | Whether to target units riding inside vehicles |
 | Custom Ammo | `SatchelCharge_Remote_Ammo` | `DemoCharge_Remote_Ammo` | Payload. Comma-separate for multiple charges |
 

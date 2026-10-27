@@ -965,8 +965,16 @@ private _mg = group effectiveCommander _mover;
 _mg setBehaviour "CARELESS";
 _mg setCombatMode "BLUE";
 { _x disableAI "AUTOTARGET"; _x disableAI "TARGET"; } forEach units _mg;
-_mover limitSpeed 40;   // km/h
-_mg addWaypoint [[4650, 7600, 0], 0];
+// Driven by script, 40 km/h due north: its own driving to a waypoint sometimes went off east
+// and never came in range (SP 27 Oct, the v1.3.0 run) or stood still (MP 27 Oct).
+_mover engineOn true;
+addMissionEventHandler ["EachFrame", {
+    _thisArgs params ["_m"];
+    if (!alive _m || { ({ alive _x } count crew _m) == 0 } || { ((getPosATL _m) select 1) > 7600 }) exitWith {
+        removeMissionEventHandler ["EachFrame", _thisEventHandler];
+    };
+    _m setVelocity [0, 11.1, (velocity _m) select 2];
+}, [_mover]];
 _logic = [[4508, 6000, 0], FPVT_AT] call FPVT_fnc_module;
 [_logic, [_drone], true] call FPV_AI_Drones_fnc_initModule;
 ["Stage 11/11 - tank driving at ~40 km/h past the drone", _drone, _mover] call FPVT_fnc_show;
