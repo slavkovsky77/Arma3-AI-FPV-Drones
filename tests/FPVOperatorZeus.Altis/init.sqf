@@ -19,6 +19,7 @@ enableRadio false; enableSentences false; 0 fadeRadio 0;
 player allowDamage false;
 player hideObjectGlobal true;
 player enableSimulation false;
+showChat false;   // the Crocus mod writes "Deleteing !" when its drones blow up
 ("SC_black" call BIS_fnc_rscLayer) cutText ["", "BLACK FADED", 0];
 
 // --- Helpers ----------------------------------------------------------------
@@ -59,6 +60,50 @@ SC_open = {
         if (_bestScore == 0) exitWith {};
     };
     _best
+};
+
+// Path of the first tree item whose text contains _needle, or [].
+SC_tvFind = {
+    params ["_tv", "_path", "_needle"];
+    private _found = [];
+    for "_i" from 0 to ((_tv tvCount _path) - 1) do {
+        private _p = _path + [_i];
+        if (((_tv tvText _p) find _needle) >= 0) exitWith { _found = _p; };
+        private _sub = [_tv, _p, _needle] call SC_tvFind;
+        if (_sub isNotEqualTo []) exitWith { _found = _sub; };
+    };
+    _found
+};
+// Zeus' Create panel: press the mode button whose class name has _mode in it ("module", "unit").
+SC_zeusMode = {
+    params ["_mode"];
+    private _disp = findDisplay 312;
+    private _btn = (allControls _disp) select { private _c = toLower ctrlClassName _x; (_c find "mode") >= 0 && { (_c find _mode) >= 0 } };
+    format ["ui mode %1: %2", _mode, _btn apply { [ctrlIDC _x, ctrlClassName _x] }] call SC_log;
+    if (_btn isNotEqualTo []) then { ctrlActivate (_btn select 0); };
+};
+// Picks the module in Zeus' Create panel, as a player does before placing it.
+SC_pickModule = {
+    private _disp = findDisplay 312;
+    if (isNull _disp) exitWith { "ui no curator display" call SC_log; };
+    ["module"] call SC_zeusMode;
+    uiSleep 0.4;
+    private _hit = false;
+    // The tree on screen first: the unit trees are big.
+    private _trees = (allControls _disp) select { ctrlType _x == 12 };
+    _trees = (_trees select { ctrlShown _x }) + (_trees select { !ctrlShown _x });
+    {
+        private _tv = _x;
+        private _path = [_tv, [], "UAV Operator"] call SC_tvFind;
+        if (_path isNotEqualTo []) exitWith {
+            for "_i" from 1 to ((count _path) - 1) do { _tv tvExpand (_path select [0, _i]); };
+            _tv tvSetCurSel _path;
+            uiNamespace setVariable ["SC_pickedTree", _tv];   // a control in missionNamespace pops an engine warning
+            _hit = true;
+            format ["ui module in tree %1 (%2) at %3, shown %4", ctrlIDC _tv, ctrlClassName _tv, _path, ctrlShown _tv] call SC_log;
+        };
+    } forEach _trees;
+    if (!_hit) then { "ui module not found in any tree" call SC_log; };
 };
 
 // --- Zeus -------------------------------------------------------------------
@@ -122,14 +167,14 @@ SC_follow = {
     SC_op = _grp createUnit ["B_soldier_UAV_F", _p0, [], 0, "CAN_COLLIDE"];
     SC_op setDir _dir;
     SC_op setBehaviour "CARELESS";
-    SC_op setSpeedMode "LIMITED";
+    SC_op setSpeedMode "FULL";
     SC_op allowDamage true;
     [SC_op, SC_at] call SC_editable;
 
     uiSleep 1;
     openCuratorInterface;
     uiSleep 1;
-    [SC_op, 22, 14, 30] call SC_follow;
+    [SC_op, 13, 6.5, 30] call SC_follow;
     ("SC_black" call BIS_fnc_rscLayer) cutText ["", "BLACK IN", 1.5];
     "BEGIN" call SC_log;
     uiSleep 1.5;
@@ -138,25 +183,31 @@ SC_follow = {
 
     // 1. Dropped onto a soldier, as a Zeus player does: he is the operator now.
     "SCENE|drop" call SC_log;
-    ["Drop it onto a soldier", "he becomes the drone operator", 4] call SC_title;
-    uiSleep 1;
+    ["Drop it onto a soldier", "Zeus: Modules > Effects > FPV AI Drones - UAV Operator", 4] call SC_title;
+    call SC_pickModule;
+    uiSleep 2.2;
     SC_opModule = (createGroup sideLogic) createUnit ["FPV_AI_Drones_Operator_Module", getPosATL SC_op, [], 0, "CAN_COLLIDE"];
     SC_opModule attachTo [SC_op, [0, 0, 0]];
     [SC_opModule] call SC_editable;
     [SC_curator, SC_opModule] call FPV_AI_Drones_fnc_curatorPlaced;
-    uiSleep 4;
+    private _tree = uiNamespace getVariable ["SC_pickedTree", controlNull];
+    if (!isNull _tree) then { _tree tvSetCurSel [-1]; };
+    ["he is the drone operator now", "", 3] call SC_title;
+    uiSleep 3.5;
+    ["unit"] call SC_zeusMode;
 
     // 2. He walks - the module goes with him.
     "SCENE|walk" call SC_log;
     ["It moves with him", "", 4] call SC_title;
-    private _walkTo = _p0 getPos [140, _dir];
+    private _walkTo = _p0 getPos [70, _dir];
     SC_op doMove _walkTo;
-    [{ (SC_op distance2D _walkTo) < 8 }, 40] call SC_wait;
+    [{ (SC_op distance2D _walkTo) < 8 }, 22] call SC_wait;
     doStop SC_op;
     uiSleep 1;
 
     // 3. Drones put down next to him become his.
     "SCENE|drones" call SC_log;
+    [SC_op, 26, 13, 30] call SC_follow;
     ["Drones put down next to him", "become his", 4] call SC_title;
     SC_drones = [];
     {
@@ -184,40 +235,41 @@ SC_follow = {
         SC_tanks pushBack _t;
     } forEach [-25, 25];
     ["Enemy armour", "his drones take off", 3.5] call SC_title;
+    // Behind the operator, looking past him towards the tanks.
     SC_cam = {
-        private _p = getPosASL SC_op;
-        private _t = getPosASL (SC_tanks select 0);
-        private _mid = (_p vectorAdd _t) vectorMultiply 0.5;
-        private _c = (ASLToAGL _mid) getPos [190, SC_viewDir + 115];
-        [AGLToASL (_c vectorAdd [0, 0, 95]), _mid]
+        private _p = getPosATL SC_op;
+        private _c = _p getPos [45, SC_viewDir + 200];
+        private _l = _p getPos [90, SC_viewDir];
+        [AGLToASL [_c select 0, _c select 1, 26], AGLToASL [_l select 0, _l select 1, 8]]
     };
     // 5. Once they are on their way, the operator is hit.
     [{ ({ alive _x && { ((getPosATL _x) select 2) > 12 } } count SC_drones) >= 2 }, 20] call SC_wait;
     uiSleep 2.2;
     "SCENE|operator_killed" call SC_log;
-    [SC_op, 14, 7, 20] call SC_follow;
-    uiSleep 0.6;
-    SC_op setDamage 1;
-    ["Operator killed", "his drones lose their pilot and come down", 5] call SC_title;
+    [SC_op, 12, 6, 20] call SC_follow;
     uiSleep 1.2;
-    private _falling = (SC_drones select { alive _x }) param [0, objNull];
-    if (!isNull _falling) then {
-        SC_fallArgs = [_falling];
-        SC_cam = {
-            private _d = SC_fallArgs select 0;
-            private _p = getPosASL _d;
-            private _c = (ASLToAGL _p) getPos [45, SC_viewDir + 120];
-            [AGLToASL (_c vectorAdd [0, 0, 18]), _p]
-        };
+    SC_op setDamage 1;
+    SC_killedAt = diag_tickTime;
+    ["Operator killed", "his drones lose their pilot and come down", 5] call SC_title;
+    uiSleep 1.6;
+    // The drones, at their own height, from the side: they follow them down.
+    SC_cam = {
+        private _up = SC_drones select { alive _x };
+        if (_up isEqualTo []) exitWith { [SC_camPos, SC_camLook] };
+        private _m = [0, 0, 0];
+        { _m = _m vectorAdd (getPosASL _x); } forEach _up;
+        _m = _m vectorMultiply (1 / count _up);
+        private _c = (ASLToAGL _m) getPos [70, SC_viewDir + 105];
+        private _z = ((getTerrainHeightASL _c) + 5) max ((_m select 2) + 6);
+        [[_c select 0, _c select 1, _z], _m]
     };
-    [{ ({ alive _x && { ((getPosATL _x) select 2) > 2 } } count SC_drones) == 0 }, 12] call SC_wait;
+    [{ ({ alive _x && { ((getPosATL _x) select 2) > 2 } } count SC_drones) == 0 }, 25] call SC_wait;
+    format ["drones down %1 s after the operator", (diag_tickTime - SC_killedAt) toFixed 1] call SC_log;
     uiSleep 3;
     format ["tanks alive %1 | drones still up %2", { alive _x && { ({ alive _x } count crew _x) > 0 } } count SC_tanks,
         { alive _x && { ((getPosATL _x) select 2) > 2 } } count SC_drones] call SC_log;
 
-    ["FPV AI Drones 1.4", "Zeus: Modules > FPV AI Drones - UAV Operator", 5] call SC_title;
-    uiSleep 5;
-    ("SC_black" call BIS_fnc_rscLayer) cutText ["", "BLACK OUT", 1.5];
-    uiSleep 2;
+    ["FPV AI Drones 1.4", "Zeus: Modules > Effects > FPV AI Drones - UAV Operator", 5] call SC_title;
+    uiSleep 5.5;
     "END" call SC_log;
 };

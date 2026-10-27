@@ -351,8 +351,7 @@ _droneTypes = _droneTypes arrayIntersect _droneTypes;   // unique
                 _x setVariable ["FPV_AI_Drones_operators", _ops];
             };
             if (_ops isNotEqualTo [] && { ({ alive _x } count _ops) == 0 } && { !(_x getVariable ["FPV_AI_Drones_disabled", false]) }) then {
-                _x setFuel 0;
-                _x engineOn false;
+                [_x] call FPV_AI_Drones_fnc_dropDrone;   // engine off, and it drops
                 _x setVariable ["FPV_AI_Drones_disabled", true, true];
                 _x setVariable ["FPV_AI_Drones_disabledWhy", "its operator was killed"];
                 diag_log format ["FPV_AI_Drones: drone %1 lost its operator - engine off, it comes down", _x];

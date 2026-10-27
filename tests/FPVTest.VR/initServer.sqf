@@ -1092,26 +1092,50 @@ deleteVehicle _logic;
 if ([14] call FPVT_fnc_runStage) then {
 // --- Stage 14: UAV Operator Required --------------------------------------------
 // A soldier synced to the module is the drone's operator (a Workshop wish). Killed
-// mid-attack: the drone loses its pilot and comes down; the tank survives.
-_drone = [[1000, 5000, 0]] call FPVT_fnc_spawnDrone;
-_drone setVariable ["FPV_AI_Drones_managed", true, true];
-private _op = (createGroup [west, true]) createUnit ["B_soldier_UAV_F", [960, 5000, 0], [], 0, "CAN_COLLIDE"];
-_op disableAI "MOVE";
-_tank = [[1000, 5450, 0]] call FPVT_fnc_spawnTank;
-_logic = [[1008, 5000, 0], FPVT_AT + [["TargetDetectionRange", 500], ["OperatorRequired", true]]] call FPVT_fnc_module;
-[_logic, [_drone, _op], true] call FPV_AI_Drones_fnc_initModule;
-["Stage 14 - UAV Operator Required: the operator is killed mid-attack", _drone, _tank] call FPVT_fnc_show;
-private _until14 = time + 60;
-waitUntil { sleep 0.1; !alive _drone || { (_drone distance2D _tank) < 250 } || { time > _until14 } };
-private _flew14 = alive _drone && { (_drone distance2D _tank) < 250 };
-_op setDamage 1;
-sleep 15;
-private _agl14 = if (isNull _drone) then { -1 } else { round ((getPosATL _drone) select 2) };
-["14a drone comes down when its operator is killed", _flew14 && { isNull _drone || { !alive _drone } || { _agl14 < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
-    format ["flew while the operator lived=%1, 15 s after: alive=%2 agl=%3 fuel=%4 why=%5 | tank damage=%6",
-        _flew14, alive _drone, _agl14, fuel _drone, _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
-{ deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic; deleteVehicle _op;
-if (!isNull _drone) then { { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; };
+// mid-attack: the drone loses its pilot and comes down; the tank survives. It must drop
+// within seconds: with the engine off alone, a drone glided on 13 s and 150 m towards the
+// tanks (Zeus video, 27 Oct), so the rotor is broken too. 14a Crocus, 14c base-game AR-2.
+
+// After a drone loses its operator: [seconds until it is down, m it went on, m it was up].
+FPVT_fnc_fall = {
+    params ["_drone"];
+    private _t0 = time;
+    private _p0 = getPosATL _drone;
+    private _last = _p0;
+    waitUntil {
+        sleep 0.05;
+        if (!isNull _drone) then { _last = getPosATL _drone; };
+        isNull _drone || { !alive _drone } || { (_last select 2) < 1.5 } || { time > _t0 + 15 }
+    };
+    [time - _t0, round (_last distance2D _p0), round (_p0 select 2)]
+};
+
+{
+    _x params ["_case", "_type"];
+    _drone = [[1000, 5000, 0], _type] call FPVT_fnc_spawnDrone;
+    _drone setVariable ["FPV_AI_Drones_managed", true, true];
+    private _op = (createGroup [west, true]) createUnit ["B_soldier_UAV_F", [960, 5000, 0], [], 0, "CAN_COLLIDE"];
+    _op disableAI "MOVE";
+    _tank = [[1000, 5450, 0]] call FPVT_fnc_spawnTank;
+    _logic = [[1008, 5000, 0], FPVT_AT + [["TargetDetectionRange", 500], ["OperatorRequired", true]]] call FPVT_fnc_module;
+    [_logic, [_drone, _op], true] call FPV_AI_Drones_fnc_initModule;
+    [format ["Stage 14 - UAV Operator Required (%1): the operator is killed mid-attack", _type], _drone, _tank] call FPVT_fnc_show;
+    private _until14 = time + 60;
+    waitUntil { sleep 0.1; !alive _drone || { (_drone distance2D _tank) < 250 } || { time > _until14 } };
+    private _flew14 = alive _drone && { (_drone distance2D _tank) < 250 };
+    _op setDamage 1;
+    ([_drone] call FPVT_fnc_fall) params ["_fall14", "_run14", "_up14"];
+    sleep 4;
+    private _agl14 = if (isNull _drone) then { -1 } else { round ((getPosATL _drone) select 2) };
+    [format ["%1 %2 drops when its operator is killed", _case, _type],
+        _flew14 && { _fall14 < 8 } && { isNull _drone || { !alive _drone } || { _agl14 < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
+        format ["flew while the operator lived=%1 | down %2 s after he died, from %3 m up, %4 m on | then alive=%5 agl=%6 fuel=%7 rotor=%8 why=%9 | tank damage=%10",
+            _flew14, _fall14 toFixed 1, _up14, _run14, alive _drone, _agl14, fuel _drone, _drone getHitPointDamage "HitHRotor",
+            _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
+    { deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic; deleteVehicle _op;
+    if (!isNull _drone) then { { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; };
+    sleep 1;
+} forEach [["14a", "B_Crocus_AT"], ["14c", "B_UAV_01_F"]];
 
 // 14b: the Zeus way - the "UAV Operator" module dropped onto a soldier (Zeus attaches it to
 // him; Zeus can't sync). It must go where he goes: he walks 300 m, a drone is put down next
@@ -1134,12 +1158,13 @@ private _flew14b = alive _drone && { (_drone distance2D _tank) < 250 };
 private _his14b = _op2 in (_drone getVariable ["FPV_AI_Drones_operators", []]);
 private _moved14b = (attachedTo _opModule) isEqualTo _op2 && { (_opModule distance2D _op2) < 2 };
 _op2 setDamage 1;
-sleep 15;
+([_drone] call FPVT_fnc_fall) params ["_fall14b", "_run14b", "_up14b"];
+sleep 4;
 private _agl14b = if (isNull _drone) then { -1 } else { round ((getPosATL _drone) select 2) };
 ["14b Zeus: UAV Operator module moves with him; his drone comes down when he is killed",
-    _moved14b && { _his14b } && { _flew14b } && { isNull _drone || { !alive _drone } || { _agl14b < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
-    format ["module still on him after 300 m=%1 | drone placed by him became his=%2, flew=%3, 15 s after he died: alive=%4 agl=%5 why=%6 | tank damage=%7",
-        _moved14b, _his14b, _flew14b, alive _drone, _agl14b, _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
+    _moved14b && { _his14b } && { _flew14b } && { _fall14b < 8 } && { isNull _drone || { !alive _drone } || { _agl14b < 3 } } && { !([_tank] call FPVT_fnc_vehicleDone) },
+    format ["module still on him after 300 m=%1 | drone placed by him became his=%2, flew=%3 | down %4 s after he died, from %5 m up, %6 m on | then alive=%7 agl=%8 why=%9 | tank damage=%10",
+        _moved14b, _his14b, _flew14b, _fall14b toFixed 1, _up14b, _run14b, alive _drone, _agl14b, _drone getVariable ["FPV_AI_Drones_disabledWhy", "-"], damage _tank toFixed 2]] call FPVT_fnc_check;
 { deleteVehicle _x } forEach crew _tank; deleteVehicle _tank; deleteVehicle _logic; deleteVehicle _opModule;
 if (!isNull _drone) then { { deleteVehicle _x } forEach crew _drone; deleteVehicle _drone; };
 };

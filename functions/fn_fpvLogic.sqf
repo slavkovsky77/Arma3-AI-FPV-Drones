@@ -97,8 +97,9 @@ private _markDisabled = {
     if (isNull _u || { _u getVariable ["FPV_AI_Drones_disabled", false] }) exitWith {};
     _u setVariable ["FPV_AI_Drones_disabled", true, true];
     _u setVariable ["FPV_AI_Drones_disabledWhy", _why];
-    // No operator: its crew lives, so cut the engine or its AI would keep it in the air.
-    if (_why == "its operator was killed") then { _u setFuel 0; _u engineOn false; };
+    // No operator: its crew lives, so cut the engine or its AI would keep it in the air -
+    // and make it drop, not glide on towards its target (fn_dropDrone).
+    if (_why == "its operator was killed") then { [_u] call FPV_AI_Drones_fnc_dropDrone; };
     diag_log format ["FPV_AI_Drones: drone %1 no longer flown: %2", _u, _why];
 };
 

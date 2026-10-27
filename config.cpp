@@ -22,6 +22,7 @@ class CfgFunctions {
             class curatorHook { postInit = 1; };   // starts FPV modules placed in Zeus
             class curatorPlaced {};
             class operatorModule {};
+            class dropDrone {};
         };
     };
 };

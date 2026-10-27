@@ -125,7 +125,7 @@ def main():
     shutil.copytree(os.path.join(HERE, mission), dst)
 
     launched = time.time()
-    subprocess.Popen([os.path.join(ARMA, "arma3_x64.exe"), f"-name={PROFILE}", f"-mod={MODS}", "-skipIntro",
+    game = subprocess.Popen([os.path.join(ARMA, "arma3_x64.exe"), f"-name={PROFILE}", f"-mod={MODS}", "-skipIntro",
                       "-noSplash", "-world=empty", f"-init=playMission['','{mission}',true]"], cwd=ARMA)
     print("game started, waiting for SHOWCASE|BEGIN ...", flush=True)
 
@@ -140,12 +140,12 @@ def main():
                 chunk = f.read()
                 pos = f.tell()
             for line in chunk.splitlines():
-                if "SHOWCASE|" not in line and "Error in expression" not in line:
-                    continue
+                if "SHOWCASE|" not in line and "Error in expression" not in line and "Warning Message:" not in line:
+                    continue   # a "Warning Message" is a box on screen that pauses singleplayer
                 print(line.strip(), flush=True)
                 if "Error in expression" in line and proc is None:
                     # A broken scenario never reaches BEGIN - don't sit there for 5 minutes.
-                    subprocess.run(["taskkill", "/IM", "arma3_x64.exe", "/F"], capture_output=True)
+                    game.kill()
                     print("script error before recording started - stopped (see the RPT)")
                     return 1
                 if "SHOWCASE|BEGIN" in line and proc is None:
@@ -162,6 +162,8 @@ def main():
 
     if proc is None:
         print("never saw SHOWCASE|BEGIN - nothing recorded")
+        if not args.keep_game:
+            game.kill()
         return 1
     proc.stdin.write(b"q")
     proc.stdin.flush()
@@ -169,7 +171,7 @@ def main():
     aud.stop_evt.set()
     aud.join(timeout=10)
     if not args.keep_game:
-        subprocess.run(["taskkill", "/IM", "arma3_x64.exe", "/F"], capture_output=True)
+        game.kill()   # only our game: other sessions may have Arma open too
     if aud.error or aud.started_at is None:
         print(f"audio failed: {aud.error} - keeping the silent video")
         shutil.copy(video, final)
