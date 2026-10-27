@@ -1,6 +1,7 @@
-"""Records the v1.2 showcase (tests/FPVShowcase.Altis) to an MP4 with game audio.
+"""Records a scripted scene (default: the v1.2 showcase, tests/FPVShowcase.Altis) to an MP4 with game audio.
 
-    python tests/record_showcase.py --out "C:/Users/<you>/Videos/FPV AI Drones"
+    python tests/record_showcase.py --out "D:/Recordings/FPV AI Drones"
+    python tests/record_showcase.py --out "D:/Recordings/FPV AI Drones" --mission FPVOperatorZeus.Altis
 
 Copies the mission into <Arma 3>/Missions, starts the game (same mods and profile as
 run_tests.py), and records the screen (Desktop Duplication -> Media Foundation H.264)
@@ -111,19 +112,21 @@ def main():
     ap.add_argument("--fps", type=int, default=60)
     ap.add_argument("--bitrate", default="45M")
     ap.add_argument("--keep-game", action="store_true", help="leave the game running afterwards")
+    ap.add_argument("--mission", default=MISSION, help="scene folder in tests/, e.g. FPVOperatorZeus.Altis")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     video, audio_wav = os.path.join(args.out, f"raw_{stamp}.mp4"), os.path.join(args.out, f"raw_{stamp}.wav")
-    final = os.path.join(args.out, f"showcase_{stamp}.mp4")
+    mission = args.mission
+    final = os.path.join(args.out, f"{mission.split('.')[0]}_{stamp}.mp4")
 
-    dst = os.path.join(ARMA, "Missions", MISSION)
+    dst = os.path.join(ARMA, "Missions", mission)
     shutil.rmtree(dst, ignore_errors=True)
-    shutil.copytree(os.path.join(HERE, MISSION), dst)
+    shutil.copytree(os.path.join(HERE, mission), dst)
 
     launched = time.time()
     subprocess.Popen([os.path.join(ARMA, "arma3_x64.exe"), f"-name={PROFILE}", f"-mod={MODS}", "-skipIntro",
-                      "-noSplash", "-world=empty", f"-init=playMission['','{MISSION}',true]"], cwd=ARMA)
+                      "-noSplash", "-world=empty", f"-init=playMission['','{mission}',true]"], cwd=ARMA)
     print("game started, waiting for SHOWCASE|BEGIN ...", flush=True)
 
     rpt, pos, markers = None, 0, []

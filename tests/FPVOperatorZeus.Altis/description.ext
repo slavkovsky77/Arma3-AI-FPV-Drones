@@ -1,0 +1,12 @@
+author = "slavkovsky77";
+onLoadName = "FPV AI Drones - UAV Operator in Zeus";
+onLoadMission = "The UAV Operator module in Zeus, scripted for a video (tests\record_showcase.py --mission FPVOperatorZeus.Altis).";
+briefing = 0;
+debriefing = 0;
+enableDebugConsole = 2;
+class Header
+{
+    gameType = "Sandbox";
+    minPlayers = 1;
+    maxPlayers = 1;
+};

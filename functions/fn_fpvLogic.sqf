@@ -80,6 +80,10 @@ private _is_dead = {
 private _disabledReason = {
     params ["_u"];
     if (_u getVariable ["FPV_AI_Drones_disabled", false]) exitWith { _u getVariable ["FPV_AI_Drones_disabledWhy", "disabled"] };
+    // Its operators all dead ("UAV Operator Required", the UAV Operator module): checked
+    // here every frame - the module's 2 s round let an attacking drone fly on 100 m.
+    private _ops = _u getVariable ["FPV_AI_Drones_operators", []];
+    if (_ops isNotEqualTo [] && { ({ alive _x } count _ops) == 0 }) exitWith { "its operator was killed" };
     private _crew = (crew _u) select { alive _x };
     if (_crew isEqualTo []) exitWith { "no living crew" };
     // Only if it could when this script took it on: a drone mod may report a healthy drone as unable.
@@ -93,6 +97,8 @@ private _markDisabled = {
     if (isNull _u || { _u getVariable ["FPV_AI_Drones_disabled", false] }) exitWith {};
     _u setVariable ["FPV_AI_Drones_disabled", true, true];
     _u setVariable ["FPV_AI_Drones_disabledWhy", _why];
+    // No operator: its crew lives, so cut the engine or its AI would keep it in the air.
+    if (_why == "its operator was killed") then { _u setFuel 0; _u engineOn false; };
     diag_log format ["FPV_AI_Drones: drone %1 no longer flown: %2", _u, _why];
 };
 
