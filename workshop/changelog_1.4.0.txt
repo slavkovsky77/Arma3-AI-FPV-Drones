@@ -5,9 +5,9 @@ FIXED
 
 NEW MODULE SETTINGS
 - UAV Operator Required: synchronise soldiers to the module as the drones' operators. When the last of them is killed, the drones lose their pilot - engines off, and they drop within a few seconds instead of gliding on towards their target
-
-NEW MODULE
-- UAV Operator (for Zeus, works in the editor too): drop it onto a soldier and he becomes a drone operator. It moves with him: every drone of his side that comes within 100 m of him becomes his - also ones you put down next to him later - and they come down when he is killed. Deleting the module ends his role
 - Attack Empty Vehicles: also attack vehicles with nobody inside (parked or abandoned), if their faction is one the drone attacks. Civilian vehicles never; crewed targets still come first; a tank whose crew was already killed is not attacked again. Default on
 - Second Pass Chance (%): when a run misses (Accuracy below 100), the drone can fly low past the target, climb out and come round for another run instead of going down beside it. Every new run rolls Accuracy again. Default 50
 - Delete Drone After Detonation: no wreck is left when the payload goes off - few FPV drones have a proper destroyed model. Default on
+
+NEW MODULE
+- UAV Operator (for Zeus, works in the editor too): drop it onto a soldier and he becomes a drone operator. It moves with him: every drone of his side that comes within 100 m of him becomes his - also ones you put down next to him later - and they come down when he is killed. Deleting the module ends his role
